@@ -8,19 +8,17 @@ import ResultOverlay from '@/components/ResultOverlay';
 
 export default function PlayPage() {
   const router = useRouter();
-  // SAFEGUARD 1: Initialize balance to 1000 immediately so UI shows up.
-  // We will update it to the "Real" database balance a second later.
   const [balance, setBalance] = useState<number>(1000);
   const [image, setImage] = useState<any>(null);
   const [result, setResult] = useState<any>(null);
   const [loadingMsg, setLoadingMsg] = useState("Booting...");
 
-  // 1. Auth & Data Load
+  // Wager State
+  const [wager, setWager] = useState<number>(50);
+
   useEffect(() => {
     const init = async () => {
       const supabase = createClient();
-
-      // A. Ensure we are logged in
       let { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoadingMsg("Creating Anonymous ID...");
@@ -28,34 +26,18 @@ export default function PlayPage() {
         user = data.user;
       }
 
-      // B. Load Data
       setLoadingMsg("Syncing Database...");
-      await Promise.all([
-        loadHand(),
-        loadBalance(user?.id)
-      ]);
-
+      await Promise.all([ loadHand(), loadBalance(user?.id) ]);
       setLoadingMsg("Ready");
     };
     init();
   }, []);
 
   async function loadBalance(userId: string | undefined) {
-    if (!userId) return; // Should not happen given logic above
-
+    if (!userId) return;
     const supabase = createClient();
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('current_balance')
-      .eq('id', userId)
-      .single();
-
-    // SAFEGUARD 2: If DB has a value, use it. If not (ghost user), keep the default 1000.
-    if (data) {
-      setBalance(data.current_balance);
-    } else {
-      console.log("New user detected. Starting with $1000.");
-    }
+    const { data } = await supabase.from('profiles').select('current_balance').eq('id', userId).single();
+    if (data) setBalance(data.current_balance);
   }
 
   async function loadHand() {
@@ -64,35 +46,36 @@ export default function PlayPage() {
       const { image } = await getNextHand();
       if (image) setImage(image);
     } catch (e) {
-      console.error(e);
-      // SAFEGUARD 3: Fallback image if DB fails
       setImage({ url: '/assets/game/1.jpg', id: 0, type: 'real' });
     }
   }
 
-  const handleWager = async (guess: 'real' | 'ai', tierIdx: number) => {
-    // Optimistic Update: Don't wait for server to show the click
-    const res = await submitWager(image.id, tierIdx, guess);
+  const handleWager = async (guess: 'real' | 'ai') => {
+    if (wager > balance) { alert("Insufficient Funds"); return; }
 
-    if (res?.error === 'BANKRUPT') {
-      router.push('/back-room');
+    const res = await submitWager(image.id, wager, guess);
+
+    // ERROR HANDLING
+    if (res?.error) {
+      console.error(res.error);
+      if (res.error === 'BANKRUPT') { router.push('/back-room'); return; }
+      // Fallback: If DB permissions fail, just let them play in browser memory
+      alert("⚠️ Database Permission Error: Check Supabase SQL Policies.");
       return;
     }
 
-    // Server might return error if "Ghost User" (missing profile row)
-    // We handle that by just updating local state for now
     if (res?.new_balance !== undefined) {
       setBalance(res.new_balance);
       setResult(res);
-    } else {
-      // Fallback if server failed to write to DB
-      alert("Database Error: Using Offline Calculation");
-      // You could add offline math here, but usually this means Supabase RLS is blocking
+      if (wager > res.new_balance) setWager(Math.floor(res.new_balance / 2));
     }
   };
 
-  // Only show loading screen if we are missing the IMAGE.
-  // We no longer block on balance since we default to 1000.
+  // UI CALCULATIONS
+  const riskRatio = balance > 0 ? (wager / balance) : 0;
+  const multiplier = (1.2 + (riskRatio * 0.8)).toFixed(2);
+  const potentialWin = Math.floor(wager * (parseFloat(multiplier) - 1));
+
   if (!image) {
     return (
       <div className="min-h-screen bg-cyber-black flex flex-col items-center justify-center font-mono text-neon-green">
@@ -110,7 +93,10 @@ export default function PlayPage() {
           <div className="text-xs text-gray-500 uppercase tracking-widest">Balance</div>
           <div className="text-3xl font-mono text-neon-green">${balance}</div>
         </div>
-        <div className="text-right text-xs text-gray-500">ID: {image.id}</div>
+        <div className="text-right">
+            <div className="text-xs text-gray-500">POTENTIAL PROFIT</div>
+            <div className="text-xl font-mono text-neon-blue">+${potentialWin} <span className="text-xs text-gray-400">({multiplier}x)</span></div>
+        </div>
       </div>
 
       <div className="relative">
@@ -123,9 +109,40 @@ export default function PlayPage() {
       </div>
 
       {!result && (
-        <div className="grid grid-cols-2 gap-4 mt-4">
-          <button onClick={() => handleWager('real', 1)} className="bg-green-900/20 border border-green-600 text-green-500 py-3 font-bold hover:bg-green-500 hover:text-black transition-colors">REAL</button>
-          <button onClick={() => handleWager('ai', 1)} className="bg-red-900/20 border border-red-600 text-red-500 py-3 font-bold hover:bg-red-500 hover:text-black transition-colors">AI</button>
+        <div className="space-y-6 mt-4">
+          {/* SLIDER CONTROLS - HIGH VISIBILITY UPDATE */}
+          <div className="bg-cyber-gray p-6 rounded border border-cyber-border">
+            <div className="flex justify-between text-sm mb-4 text-neon-blue font-mono font-bold">
+                <span>WAGER: ${wager}</span>
+                <span>{Math.floor(riskRatio * 100)}% RISK</span>
+            </div>
+
+            {/* LARGE SLIDER */}
+            <input
+                type="range"
+                min="1"
+                max={balance}
+                value={wager}
+                onChange={(e) => setWager(parseInt(e.target.value))}
+                className="w-full h-4 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-neon-green"
+            />
+
+            <div className="flex justify-between mt-4 gap-2">
+                <button onClick={() => setWager(Math.floor(balance * 0.25))} className="flex-1 bg-black border border-gray-700 py-2 text-gray-400 hover:text-white text-xs">25%</button>
+                <button onClick={() => setWager(Math.floor(balance * 0.5))} className="flex-1 bg-black border border-gray-700 py-2 text-gray-400 hover:text-white text-xs">50%</button>
+                <button onClick={() => setWager(balance)} className="flex-1 bg-red-900/30 border border-red-900 py-2 text-red-500 hover:bg-red-900 hover:text-white font-bold text-xs">ALL IN</button>
+            </div>
+          </div>
+
+          {/* BET BUTTONS (NOW SUBMIT BUTTONS) */}
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={() => handleWager('real')} className="bg-green-900/20 border border-green-600 text-green-500 py-4 font-bold text-xl hover:bg-green-500 hover:text-black transition-all hover:scale-[1.02]">
+                REAL
+            </button>
+            <button onClick={() => handleWager('ai')} className="bg-red-900/20 border border-red-600 text-red-500 py-4 font-bold text-xl hover:bg-red-500 hover:text-black transition-all hover:scale-[1.02]">
+                AI
+            </button>
+          </div>
         </div>
       )}
     </div>
