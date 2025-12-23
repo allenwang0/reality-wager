@@ -3,66 +3,13 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 255, 255, 255;
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
 }
 
 body {
-  background-color: #050505;
-  color: white;
-  overflow-x: hidden;
-}
-
-/* CRT Vignette (Dark corners) */
-body::after {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.8) 100%);
-  pointer-events: none;
-  z-index: 50;
-}
-
-/* Scanline Effect */
-.bg-scanlines {
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0,0,0,0.15) 0px,
-    rgba(0,0,0,0.15) 1px,
-    transparent 1px,
-    transparent 2px
-  );
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 40;
-}
-
-/* Laser Scanner Animation */
-@keyframes scan {
-  0% { top: 0%; opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 1; }
-  100% { top: 100%; opacity: 0; }
-}
-
-.animate-scan {
-  animation: scan 3s linear infinite;
-}
-
-/* Text Flicker */
-@keyframes flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.8; }
-  52% { opacity: 0.2; }
-  54% { opacity: 0.8; }
-}
-
-.animate-flicker {
-  animation: flicker 4s infinite;
+  /* Clean Dark Mode background */
+  background-color: #09090b;
+  color: #fafafa;
+  font-family: system-ui, -apple-system, sans-serif; /* Clean Sans Serif */
 }
