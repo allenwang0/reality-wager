@@ -9,6 +9,7 @@ export default function PlayPage() {
   const [image, setImage] = useState<any>(null);
   const [result, setResult] = useState<any>(null);
   const [wager, setWager] = useState<number>(50);
+  const [loading, setLoading] = useState(false); // New loading state
 
   // --- AUTH & LOAD LOGIC ---
   useEffect(() => {
@@ -32,18 +33,25 @@ export default function PlayPage() {
   }
 
   async function loadHand() {
+    setLoading(true); // Start loading
     setResult(null);
     try {
       const { image } = await getNextHand();
       if (image) setImage(image);
     } catch (e) {
       console.error(e);
+    } finally {
+      setLoading(false); // Stop loading
     }
   }
 
   const handleWager = async (guess: 'real' | 'ai') => {
-    if (wager > balance) return;
+    if (wager > balance || loading) return; // Prevent double clicks
+
+    setLoading(true);
     const res = await submitWager(image.id, wager, guess);
+    setLoading(false);
+
     if (res?.new_balance !== undefined) {
       setBalance(res.new_balance);
       setResult(res);
@@ -51,18 +59,16 @@ export default function PlayPage() {
     }
   };
 
-  // UI Colors for Risk
   const riskRatio = balance > 0 ? (wager / balance) : 0;
 
-  // Don't render until we have an image
   if (!image) return (
-    <div className="min-h-screen flex flex-col items-center justify-center font-black text-2xl">
-      LOADING...
+    <div className="min-h-screen flex flex-col items-center justify-center font-black text-2xl text-black bg-[#fffbeb]">
+      LOADING GAME...
     </div>
   );
 
   return (
-    <div className="min-h-screen max-w-md mx-auto p-6 flex flex-col font-sans">
+    <div className="min-h-screen max-w-md mx-auto p-6 flex flex-col font-sans text-black">
 
       {/* HEADER CARD */}
       <div className="bg-white border-4 border-black shadow-[4px_4px_0px_0px_#000] rounded-xl p-4 mb-8 flex justify-between items-center">
@@ -82,14 +88,14 @@ export default function PlayPage() {
 
         {/* CARTOON OVERLAY RESULT */}
         {result && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+          <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-white/10 backdrop-blur-sm">
             <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_#000] rounded-xl p-6 w-full text-center animate-in zoom-in duration-200">
 
               <div className="text-5xl font-black mb-2 uppercase italic transform -rotate-2">
                 {result.isCorrect ? (
-                  <span className="text-green-500 drop-shadow-[2px_2px_0px_#000]">NICE!</span>
+                  <span className="text-green-600 drop-shadow-[2px_2px_0px_#000]">NICE!</span>
                 ) : (
-                  <span className="text-red-500 drop-shadow-[2px_2px_0px_#000]">NOPE!</span>
+                  <span className="text-red-600 drop-shadow-[2px_2px_0px_#000]">NOPE!</span>
                 )}
               </div>
 
@@ -98,14 +104,16 @@ export default function PlayPage() {
               </div>
 
               <div className="mb-6 text-sm font-bold bg-yellow-200 inline-block px-2 py-1 border-2 border-black rounded">
-                It was {result.source || "Unknown"}
+                Source: {result.source || "Unknown"}
               </div>
 
+              {/* FIXED BUTTON ARROW SYNTAX HERE */}
               <button
                 onClick={loadHand}
-                className="w-full bg-blue-400 border-4 border-black text-white font-black py-4 rounded-xl text-xl shadow-[4px_4px_0px_0px_#000] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_#000] active:translate-y-[4px] active:shadow-none transition-all"
+                disabled={loading}
+                className="w-full bg-blue-400 border-4 border-black text-black font-black py-4 rounded-xl text-xl shadow-[4px_4px_0px_0px_#000] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_#000] active:translate-y-[4px] active:shadow-none transition-all disabled:opacity-50"
               >
-                NEXT ROUND &rarr;
+                {loading ? "LOADING..." : "NEXT ROUND →"}
               </button>
             </div>
           </div>
@@ -118,7 +126,7 @@ export default function PlayPage() {
 
           {/* CHUNKY SLIDER PANEL */}
           <div className="bg-yellow-100 border-4 border-black shadow-[4px_4px_0px_0px_#000] rounded-xl p-4">
-             <div className="flex justify-between text-xs font-black mb-2 uppercase">
+             <div className="flex justify-between text-xs font-black mb-2 uppercase text-black">
                <span>Risk Level: {Math.floor(riskRatio * 100)}%</span>
                <span>All In: ${balance}</span>
              </div>
@@ -129,29 +137,31 @@ export default function PlayPage() {
                 max={balance}
                 value={wager}
                 onChange={(e) => setWager(parseInt(e.target.value))}
-                className="w-full mb-6"
+                className="w-full mb-6 accent-black"
             />
 
              <div className="flex gap-2">
-                 <button onClick={() => setWager(Math.floor(balance * 0.25))} className="flex-1 bg-white border-2 border-black font-bold text-xs py-2 rounded shadow-[2px_2px_0px_0px_#000] active:translate-y-1 active:shadow-none">25%</button>
-                 <button onClick={() => setWager(Math.floor(balance * 0.50))} className="flex-1 bg-white border-2 border-black font-bold text-xs py-2 rounded shadow-[2px_2px_0px_0px_#000] active:translate-y-1 active:shadow-none">50%</button>
-                 <button onClick={() => setWager(balance)} className="flex-1 bg-red-400 text-white border-2 border-black font-bold text-xs py-2 rounded shadow-[2px_2px_0px_0px_#000] active:translate-y-1 active:shadow-none">ALL IN</button>
+                 <button onClick={() => setWager(Math.floor(balance * 0.25))} className="flex-1 bg-white border-2 border-black font-bold text-xs py-2 rounded text-black hover:bg-gray-100">25%</button>
+                 <button onClick={() => setWager(Math.floor(balance * 0.50))} className="flex-1 bg-white border-2 border-black font-bold text-xs py-2 rounded text-black hover:bg-gray-100">50%</button>
+                 <button onClick={() => setWager(balance)} className="flex-1 bg-red-500 text-white border-2 border-black font-bold text-xs py-2 rounded hover:bg-red-600">ALL IN</button>
              </div>
           </div>
 
-          {/* BIG ACTION BUTTONS */}
+          {/* BIG ACTION BUTTONS - NOW WITH BLACK TEXT */}
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => handleWager('real')}
-              className="h-20 bg-green-400 border-4 border-black rounded-xl text-2xl font-black text-white shadow-[6px_6px_0px_0px_#000] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_#000] active:translate-y-1 active:shadow-[2px_2px_0px_0px_#000] transition-all"
+              disabled={loading}
+              className="h-20 bg-green-400 border-4 border-black rounded-xl text-2xl font-black text-black shadow-[6px_6px_0px_0px_#000] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_#000] active:translate-y-1 active:shadow-[2px_2px_0px_0px_#000] transition-all disabled:opacity-50 disabled:translate-y-1 disabled:shadow-none"
             >
-              REAL
+              {loading ? "..." : "REAL"}
             </button>
             <button
               onClick={() => handleWager('ai')}
-              className="h-20 bg-pink-500 border-4 border-black rounded-xl text-2xl font-black text-white shadow-[6px_6px_0px_0px_#000] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_#000] active:translate-y-1 active:shadow-[2px_2px_0px_0px_#000] transition-all"
+              disabled={loading}
+              className="h-20 bg-pink-500 border-4 border-black rounded-xl text-2xl font-black text-black shadow-[6px_6px_0px_0px_#000] hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_#000] active:translate-y-1 active:shadow-[2px_2px_0px_0px_#000] transition-all disabled:opacity-50 disabled:translate-y-1 disabled:shadow-none"
             >
-              AI
+              {loading ? "..." : "AI"}
             </button>
           </div>
         </div>
