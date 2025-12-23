@@ -3,7 +3,6 @@ export default function GameCard({ src }: { src: string }) {
   return (
     <div className="relative w-full aspect-[4/3] bg-cyber-black border-2 border-cyber-border rounded-lg overflow-hidden group mb-6">
       <div className="absolute inset-0 z-0">
-        {/* Using standard <img> tag to bypass Next.js domain blocking */}
         <img
           src={src}
           alt="Subject"
