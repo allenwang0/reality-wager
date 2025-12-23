@@ -4,12 +4,37 @@
 
 :root {
   --foreground-rgb: 0, 0, 0;
-  --background-rgb: 255, 255, 255;
 }
 
 body {
-  /* Clean Dark Mode background */
-  background-color: #09090b;
-  color: #fafafa;
-  font-family: system-ui, -apple-system, sans-serif; /* Clean Sans Serif */
+  /* Pale Yellow/Cream Background for that 'comic book' page feel */
+  background-color: #fffbeb;
+  color: #000000;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Custom "Chunky" Slider Styling */
+input[type=range] {
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 24px;
+  width: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 4px solid #000000;
+  cursor: pointer;
+  margin-top: -8px; /* Offset for track */
+  box-shadow: 2px 2px 0px 0px #000000;
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 8px;
+  cursor: pointer;
+  background: #000000;
+  border-radius: 999px;
 }
