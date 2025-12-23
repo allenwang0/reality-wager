@@ -5,30 +5,29 @@ import { getNextHand, submitWager } from '@/app/actions';
 import { createClient } from '@/lib/supabase/client';
 import GameCard from '@/components/GameCard';
 import ResultOverlay from '@/components/ResultOverlay';
+import { cn } from '@/lib/utils';
 
 export default function PlayPage() {
   const router = useRouter();
   const [balance, setBalance] = useState<number>(1000);
   const [image, setImage] = useState<any>(null);
   const [result, setResult] = useState<any>(null);
-  const [loadingMsg, setLoadingMsg] = useState("Booting...");
-
-  // Wager State
+  const [loadingMsg, setLoadingMsg] = useState("INITIALIZING PROTOCOL...");
   const [wager, setWager] = useState<number>(50);
 
+  // Auth & Load Logic (Same as before)
   useEffect(() => {
     const init = async () => {
       const supabase = createClient();
       let { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        setLoadingMsg("Creating Anonymous ID...");
+        setLoadingMsg("ESTABLISHING ANONYMOUS CONNECTION...");
         const { data } = await supabase.auth.signInAnonymously();
         user = data.user;
       }
-
-      setLoadingMsg("Syncing Database...");
+      setLoadingMsg("SYNCING NEURAL NET...");
       await Promise.all([ loadHand(), loadBalance(user?.id) ]);
-      setLoadingMsg("Ready");
+      setLoadingMsg("READY");
     };
     init();
   }, []);
@@ -46,22 +45,17 @@ export default function PlayPage() {
       const { image } = await getNextHand();
       if (image) setImage(image);
     } catch (e) {
-      setImage({ url: '/assets/game/1.jpg', id: 0, type: 'real' });
+      setImage({ url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b', id: 0, type: 'real' });
     }
   }
 
   const handleWager = async (guess: 'real' | 'ai') => {
-    if (wager > balance) { alert("Insufficient Funds"); return; }
-
+    if (wager > balance) { alert("INSUFFICIENT CREDITS"); return; }
     const res = await submitWager(image.id, wager, guess);
 
-    // ERROR HANDLING
     if (res?.error) {
-      console.error(res.error);
-      if (res.error === 'BANKRUPT') { router.push('/back-room'); return; }
-      // Fallback: If DB permissions fail, just let them play in browser memory
-      alert("⚠️ Database Permission Error: Check Supabase SQL Policies.");
-      return;
+       console.error(res.error);
+       return;
     }
 
     if (res?.new_balance !== undefined) {
@@ -71,78 +65,133 @@ export default function PlayPage() {
     }
   };
 
-  // UI CALCULATIONS
+  // UI Helper Calculations
   const riskRatio = balance > 0 ? (wager / balance) : 0;
   const multiplier = (1.2 + (riskRatio * 0.8)).toFixed(2);
   const potentialWin = Math.floor(wager * (parseFloat(multiplier) - 1));
 
+  // Dynamic Color based on Risk
+  const getRiskColor = () => {
+    if (riskRatio < 0.3) return "text-neon-blue";
+    if (riskRatio < 0.7) return "text-neon-yellow";
+    return "text-neon-red drop-shadow-[0_0_8px_rgba(255,0,60,0.8)]";
+  };
+
+  const getSliderColor = () => {
+    if (riskRatio < 0.3) return "accent-neon-blue";
+    if (riskRatio < 0.7) return "accent-neon-yellow";
+    return "accent-neon-red";
+  };
+
   if (!image) {
     return (
-      <div className="min-h-screen bg-cyber-black flex flex-col items-center justify-center font-mono text-neon-green">
-        <div className="animate-pulse mb-4">CONNECTING TO MAINFRAME...</div>
-        <div className="text-xs text-gray-500">Status: {loadingMsg}</div>
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center font-mono tracking-widest text-neon-green">
+        <div className="animate-spin mb-8 w-12 h-12 border-4 border-neon-green border-t-transparent rounded-full"></div>
+        <div className="animate-pulse">{loadingMsg}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-4 max-w-lg mx-auto flex flex-col justify-center">
-      {/* HUD */}
-      <div className="flex justify-between items-end border-b border-cyber-border pb-4 mb-6">
+    <div className="min-h-screen relative flex flex-col justify-center max-w-md mx-auto p-4 font-mono z-10">
+      {/* Background Scanlines */}
+      <div className="bg-scanlines"></div>
+
+      {/* TOP HUD */}
+      <div className="flex justify-between items-end mb-6 border-b border-white/20 pb-2 relative">
+        <div className="absolute -bottom-[1px] left-0 w-1/3 h-[2px] bg-neon-green shadow-[0_0_10px_#00ff41]"></div>
         <div>
-          <div className="text-xs text-gray-500 uppercase tracking-widest">Balance</div>
-          <div className="text-3xl font-mono text-neon-green">${balance}</div>
+          <div className="text-[10px] text-gray-400 mb-1 tracking-widest">NET WORTH</div>
+          <div className="text-4xl text-white font-bold tracking-tight animate-flicker">
+            ${balance.toLocaleString()}
+          </div>
         </div>
         <div className="text-right">
-            <div className="text-xs text-gray-500">POTENTIAL PROFIT</div>
-            <div className="text-xl font-mono text-neon-blue">+${potentialWin} <span className="text-xs text-gray-400">({multiplier}x)</span></div>
+           <div className="text-[10px] text-gray-400 mb-1 tracking-widest">POTENTIAL</div>
+           <div className={cn("text-xl font-bold", getRiskColor())}>
+             +${potentialWin}
+           </div>
         </div>
       </div>
 
-      <div className="relative">
+      {/* GAME AREA */}
+      <div className="relative mb-6">
         <GameCard src={image.url} />
         {result && (
-          <div className="absolute inset-0 flex items-center justify-center z-20">
+          <div className="absolute inset-0 flex items-center justify-center z-30">
             <ResultOverlay result={result} onNext={loadHand} />
           </div>
         )}
       </div>
 
+      {/* CONTROLS (Only visible if not playing result) */}
       {!result && (
-        <div className="space-y-6 mt-4">
-          {/* SLIDER CONTROLS - HIGH VISIBILITY UPDATE */}
-          <div className="bg-cyber-gray p-6 rounded border border-cyber-border">
-            <div className="flex justify-between text-sm mb-4 text-neon-blue font-mono font-bold">
-                <span>WAGER: ${wager}</span>
-                <span>{Math.floor(riskRatio * 100)}% RISK</span>
+        <div className="space-y-6">
+
+          {/* BETTING SLIDER PANEL */}
+          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 relative overflow-hidden group">
+            {/* Ambient Glow */}
+            <div className={cn("absolute top-0 left-0 w-1 h-full opacity-50 transition-colors duration-300", riskRatio > 0.5 ? "bg-neon-red" : "bg-neon-blue")}></div>
+
+            <div className="flex justify-between items-center mb-4 text-xs font-bold tracking-widest">
+              <span className="text-white">WAGER AMOUNT</span>
+              <span className={cn("transition-colors duration-300", getRiskColor())}>
+                {Math.floor(riskRatio * 100)}% RISK
+              </span>
             </div>
 
-            {/* LARGE SLIDER */}
+            <div className="flex items-end gap-2 mb-4">
+               <span className="text-2xl text-white font-bold">${wager}</span>
+               <span className="text-xs text-gray-400 mb-1">x {multiplier}</span>
+            </div>
+
             <input
                 type="range"
                 min="1"
                 max={balance}
                 value={wager}
                 onChange={(e) => setWager(parseInt(e.target.value))}
-                className="w-full h-4 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-neon-green"
+                className={cn("w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer transition-all duration-300", getSliderColor())}
             />
 
             <div className="flex justify-between mt-4 gap-2">
-                <button onClick={() => setWager(Math.floor(balance * 0.25))} className="flex-1 bg-black border border-gray-700 py-2 text-gray-400 hover:text-white text-xs">25%</button>
-                <button onClick={() => setWager(Math.floor(balance * 0.5))} className="flex-1 bg-black border border-gray-700 py-2 text-gray-400 hover:text-white text-xs">50%</button>
-                <button onClick={() => setWager(balance)} className="flex-1 bg-red-900/30 border border-red-900 py-2 text-red-500 hover:bg-red-900 hover:text-white font-bold text-xs">ALL IN</button>
+                {[10, 25, 50, 100].map((pct) => (
+                    <button
+                      key={pct}
+                      onClick={() => setWager(Math.floor(balance * (pct/100)))}
+                      className="flex-1 bg-black/40 border border-white/10 hover:border-white/50 text-[10px] py-2 text-gray-300 transition-all hover:bg-white/10"
+                    >
+                      {pct === 100 ? "MAX" : `${pct}%`}
+                    </button>
+                ))}
             </div>
           </div>
 
-          {/* BET BUTTONS (NOW SUBMIT BUTTONS) */}
+          {/* DECISION BUTTONS */}
           <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => handleWager('real')} className="bg-green-900/20 border border-green-600 text-green-500 py-4 font-bold text-xl hover:bg-green-500 hover:text-black transition-all hover:scale-[1.02]">
+            <button
+              onClick={() => handleWager('real')}
+              className="group relative h-16 bg-black/40 border border-neon-green/50 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-neon-green/10 group-hover:bg-neon-green/20 transition-all"></div>
+              <div className="absolute bottom-0 left-0 w-full h-[2px] bg-neon-green shadow-[0_0_15px_#00ff41]"></div>
+              <span className="relative z-10 text-neon-green font-bold text-xl tracking-widest group-hover:scale-110 transition-transform block">
                 REAL
+              </span>
             </button>
-            <button onClick={() => handleWager('ai')} className="bg-red-900/20 border border-red-600 text-red-500 py-4 font-bold text-xl hover:bg-red-500 hover:text-black transition-all hover:scale-[1.02]">
+
+            <button
+              onClick={() => handleWager('ai')}
+              className="group relative h-16 bg-black/40 border border-neon-red/50 overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-neon-red/10 group-hover:bg-neon-red/20 transition-all"></div>
+              <div className="absolute bottom-0 left-0 w-full h-[2px] bg-neon-red shadow-[0_0_15px_#ff003c]"></div>
+              <span className="relative z-10 text-neon-red font-bold text-xl tracking-widest group-hover:scale-110 transition-transform block">
                 AI
+              </span>
             </button>
           </div>
+
         </div>
       )}
     </div>
