@@ -105,7 +105,7 @@ export default function PlayPage() {
                 onClick={loadHand}
                 className="w-full bg-blue-400 border-4 border-black text-white font-black py-4 rounded-xl text-xl shadow-[4px_4px_0px_0px_#000] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_#000] active:translate-y-[4px] active:shadow-none transition-all"
               >
-                NEXT ROUND ->
+                NEXT ROUND &rarr;
               </button>
             </div>
           </div>
