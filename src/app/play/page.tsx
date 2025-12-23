@@ -9,7 +9,7 @@ export default function PlayPage() {
   const [image, setImage] = useState<any>(null);
   const [result, setResult] = useState<any>(null);
   const [wager, setWager] = useState<number>(50);
-  const [loading, setLoading] = useState(false); // New loading state
+  const [loading, setLoading] = useState(false);
 
   // --- AUTH & LOAD LOGIC ---
   useEffect(() => {
@@ -33,29 +33,33 @@ export default function PlayPage() {
   }
 
   async function loadHand() {
-    setLoading(true); // Start loading
+    setLoading(true);
     setResult(null);
     try {
       const { image } = await getNextHand();
       if (image) setImage(image);
     } catch (e) {
-      console.error(e);
+      console.error("Load Error:", e);
     } finally {
-      setLoading(false); // Stop loading
+      setLoading(false); // ALWAYS unlocks the buttons
     }
   }
 
   const handleWager = async (guess: 'real' | 'ai') => {
-    if (wager > balance || loading) return; // Prevent double clicks
+    if (wager > balance || loading) return;
 
-    setLoading(true);
-    const res = await submitWager(image.id, wager, guess);
-    setLoading(false);
-
-    if (res?.new_balance !== undefined) {
-      setBalance(res.new_balance);
-      setResult(res);
-      if (wager > res.new_balance) setWager(Math.floor(res.new_balance / 2));
+    setLoading(true); // Lock buttons
+    try {
+      const res = await submitWager(image.id, wager, guess);
+      if (res?.new_balance !== undefined) {
+        setBalance(res.new_balance);
+        setResult(res);
+        if (wager > res.new_balance) setWager(Math.floor(res.new_balance / 2));
+      }
+    } catch (e) {
+      alert("Connection Failed. Try again.");
+    } finally {
+      setLoading(false); // ALWAYS unlock buttons
     }
   };
 
@@ -107,13 +111,11 @@ export default function PlayPage() {
                 Source: {result.source || "Unknown"}
               </div>
 
-              {/* FIXED BUTTON ARROW SYNTAX HERE */}
               <button
                 onClick={loadHand}
-                disabled={loading}
-                className="w-full bg-blue-400 border-4 border-black text-black font-black py-4 rounded-xl text-xl shadow-[4px_4px_0px_0px_#000] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_#000] active:translate-y-[4px] active:shadow-none transition-all disabled:opacity-50"
+                className="w-full bg-blue-400 border-4 border-black text-black font-black py-4 rounded-xl text-xl shadow-[4px_4px_0px_0px_#000] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_#000] active:translate-y-[4px] active:shadow-none transition-all"
               >
-                {loading ? "LOADING..." : "NEXT ROUND →"}
+                NEXT ROUND &rarr;
               </button>
             </div>
           </div>
@@ -147,7 +149,7 @@ export default function PlayPage() {
              </div>
           </div>
 
-          {/* BIG ACTION BUTTONS - NOW WITH BLACK TEXT */}
+          {/* BIG ACTION BUTTONS */}
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => handleWager('real')}
