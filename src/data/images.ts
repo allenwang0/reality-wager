@@ -9,14 +9,14 @@ export const GAME_IMAGES: GameImage[] = [
   {
     id: 1,
     // Use a direct Unsplash link instead of local file
-    src: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+    src: 'https://hips.hearstapps.com/hmg-prod/images/dog-puppy-on-garden-royalty-free-image-1586966191.jpg?crop=0.752xw:1.00xh;0.175xw,0&resize=1200:*',
     type: 'real',
     source: 'Unsplash'
   },
   {
     id: 2,
     // Use a known AI image URL
-    src: 'https://cdn.midjourney.com/5c986e68-3843-41c1-90c7-18454790539c/0_0.png',
+    src: 'https://magazine.alumni.ubc.ca/sites/default/files/styles/max_1300x1300/public/2023-09/AIart-1920x1080.jpg?itok=i4Yw51WT',
     type: 'ai',
     source: 'Midjourney'
   }
