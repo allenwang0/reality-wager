@@ -10,17 +10,27 @@ type GameCardProps = {
 };
 
 export default function GameCard({ src, onSkip, isActive = false }: GameCardProps) {
+  // 1. Initialize State
   const [loading, setLoading] = useState(true);
   const [displayError, setDisplayError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
+  // 2. State Derivation (The Fix)
+  // We track the 'src' to detect changes BEFORE the render completes.
+  // This prevents the "Flash" where the image appears before the loading state resets.
+  const [prevSrc, setPrevSrc] = useState(src);
+
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setLoading(true);
+    setDisplayError(false);
+    setRetryCount(0);
+  }
+
   const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
-    // Reset for new image
-    setDisplayError(false);
-    setLoading(true);
-    setRetryCount(0);
+    // We removed the setLoading(true) from here because it caused the race condition.
 
     // If the image is already cached, onLoad may not fire reliably.
     // Defer one frame so the ref is attached to the new <img>.
@@ -85,9 +95,9 @@ export default function GameCard({ src, onSkip, isActive = false }: GameCardProp
 
   return (
     <div className="relative w-full aspect-[4/3] bg-protocol-black border border-protocol-gray overflow-hidden group">
-      {/* IMPORTANT FIX:
-          Only show the loader UI for the ACTIVE (top) card.
-          The next card can preload behind silently without showing "DECODING STREAM". */}
+
+      {/* DECODING STREAM UI */}
+      {/* Only show if Active AND Loading */}
       {isActive && loading && (
         <div className="absolute inset-0 z-20 bg-protocol-black flex flex-col items-center justify-center font-mono">
           <div className="flex items-center space-x-2 mb-2">
@@ -105,18 +115,22 @@ export default function GameCard({ src, onSkip, isActive = false }: GameCardProp
         src={src}
         alt="Subject"
         decoding="async"
-        loading={isActive ? 'eager' : 'eager'} // preload both; UI only for active
+        loading="eager" // Always load eagerly to ensure speed
         // @ts-ignore
         fetchPriority={isActive ? 'high' : 'low'}
         className={[
-          'w-full h-full object-cover transition-opacity duration-300',
-          loading ? 'opacity-0' : 'opacity-100',
+          'w-full h-full object-cover',
+          // CRITICAL CSS FIX:
+          // 1. If loading, use 'invisible' to ensure it takes no mouse events or paint focus.
+          // 2. If loading, REMOVE 'transition-opacity'. Transitions cause the "fade out" effect which looks like a glitch.
+          //    We want it to vanish instantly, then fade IN slowly.
+          loading ? 'opacity-0 invisible' : 'opacity-100 visible transition-opacity duration-700',
         ].join(' ')}
         onLoad={() => setLoading(false)}
         onError={handleImageError}
       />
 
-      {/* UI Overlay */}
+      {/* UI Overlay (Only visible when loaded) */}
       {!loading && (
         <>
           <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_50%,rgba(0,0,0,0.4)_100%)] z-10"></div>
