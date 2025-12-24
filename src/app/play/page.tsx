@@ -34,19 +34,28 @@ export default function PlayPage() {
     init();
   }, []);
 
+  // AGGRESSIVE PRELOADING LOGIC
+  useEffect(() => {
+    if (deck.length > 1) {
+      // Force JS to fetch the next 5 images immediately
+      deck.slice(1, 6).forEach((img) => {
+        const i = new Image();
+        i.src = img.url;
+      });
+    }
+  }, [deck]);
+
   // Deck Management
   async function fetchMoreCards(isInitial = false) {
     if (fetchingDeck) return;
     setFetchingDeck(true);
     try {
-      // Fetch a larger batch to prevent running out
       const { images } = await getHandBatch(15);
 
       setDeck(prev => {
         const currentIds = new Set(prev.map(i => i.id));
         let newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
 
-        // If we ran out of unique images in the history buffer, clear history
         if (newUnique.length < 3 && images.length > 0) {
              setHistory([]);
              newUnique = images.filter(img => !currentIds.has(img.id));
@@ -75,7 +84,7 @@ export default function PlayPage() {
       if (finishedCard) {
         setHistory(h => {
              const newHist = [...h, finishedCard.id];
-             return newHist.slice(-50); // Keep last 50
+             return newHist.slice(-50);
         });
       }
       return prev.slice(1);
@@ -154,9 +163,14 @@ export default function PlayPage() {
   return (
     <div className="min-h-screen max-w-md mx-auto p-4 flex flex-col font-mono text-white">
 
-      {/* Hidden Preloader */}
-      <div className="hidden">
-        {deck.slice(1, 4).map(img => <img key={img.id} src={img.url} alt="" />)}
+      {/* GHOST PRELOADER
+        Using opacity: 0 ensures the browser considers these "visible"
+        and downloads them with high priority, unlike display: none.
+      */}
+      <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0 }}>
+        {deck.slice(1, 6).map(img => (
+            <img key={img.id} src={img.url} alt="preload" decoding="sync" />
+        ))}
       </div>
 
       {/* HEADER */}
@@ -211,7 +225,6 @@ export default function PlayPage() {
       {/* CONTROLS */}
       {!result && (
         <div className="space-y-4">
-          {/* Wager Selector */}
           <div className="flex justify-between items-center border-t border-protocol-gray pt-4">
              <span className="text-[10px] text-gray-500 uppercase">Risk Level</span>
              <div className="flex space-x-1">
