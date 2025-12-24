@@ -11,10 +11,11 @@ export default function PlayPage() {
   // QUEUE SYSTEM
   const [deck, setDeck] = useState<GameImage[]>([]);
   const [history, setHistory] = useState<string[]>([]);
+  const [streak, setStreak] = useState(0);
 
   const [result, setResult] = useState<any>(null);
 
-  // WAGER LOGIC: Percentage based
+  // WAGER LOGIC: Fixed Percentages
   const [wagerPercent, setWagerPercent] = useState<number>(10);
 
   // Loading States
@@ -45,19 +46,14 @@ export default function PlayPage() {
     if (fetchingDeck) return;
     setFetchingDeck(true);
     try {
-      // 1. Fetch a larger batch (12 items)
       const { images } = await getHandBatch(12);
 
       setDeck(prev => {
         const currentIds = new Set(prev.map(i => i.id));
-        // Filter: Must not be in current deck AND must not be in recent history
         let newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
 
-        // 2. INFINITE STREAM FIX: If we ran out of unique images, reset history and recycle
         if (newUnique.length < 3 && images.length > 0) {
-             console.log("Stream dry. Recycling database...");
-             setHistory([]); // Clear history
-             // Just ensure we don't have duplicates in the *current* hand
+             setHistory([]);
              newUnique = images.filter(img => !currentIds.has(img.id));
         }
 
@@ -77,10 +73,8 @@ export default function PlayPage() {
     setDeck(prev => {
       const finishedCard = prev[0];
       if (finishedCard) {
-        // Add to history to avoid seeing it again too soon
         setHistory(h => {
              const newHist = [...h, finishedCard.id];
-             // Keep history size manageable (e.g., remember last 50 cards)
              if (newHist.length > 50) return newHist.slice(newHist.length - 50);
              return newHist;
         });
@@ -89,7 +83,6 @@ export default function PlayPage() {
     });
   };
 
-  // 3. AGGRESSIVE REFILL: If we have fewer than 10 cards, fetch more immediately
   useEffect(() => {
     if (deck.length < 10 && !fetchingDeck) {
       fetchMoreCards();
@@ -139,6 +132,9 @@ export default function PlayPage() {
       if (res?.new_balance !== undefined) {
         setBalance(res.new_balance);
         setResult(res);
+        if (res.isCorrect) setStreak(s => s + 1);
+        else setStreak(0);
+
         if (res.new_balance < 10) setIsBankrupt(true);
       }
     } catch (e) {
@@ -154,31 +150,40 @@ export default function PlayPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white p-6 text-center font-mono">
          <h1 className="text-6xl font-bold mb-4 text-red-600">BANKRUPT</h1>
+         <p className="mb-8">YOU HAVE LOST THE SIGNAL.</p>
          <Link href="/back-room" className="bg-red-600 text-black font-bold text-2xl px-8 py-4 border-4 border-white hover:bg-white hover:text-red-600 transition-all">
-           GO TO BACK ROOM &rarr;
+           ENTER THE BACK ROOM &rarr;
          </Link>
       </div>
     )
   }
 
-  // Initial Loading State
+  // UPDATED: Brutalist Loading Screen
   if (!currentImage) return (
-      <div className="min-h-screen flex flex-col items-center justify-center font-mono">
-          <div className="text-2xl font-bold animate-pulse text-neon-green mb-2">ESTABLISHING UPLINK...</div>
-          <div className="text-xs text-gray-500">DECRYPTING IMAGE STREAM</div>
+      <div className="min-h-screen flex flex-col items-center justify-center font-mono bg-white text-black p-4">
+          <div className="text-4xl font-black mb-6 tracking-tighter">INITIALIZING</div>
+
+          {/* Simple CSS Loading Bar */}
+          <div className="w-64 h-8 border-4 border-black p-1 mb-2">
+              <div className="h-full bg-black animate-[pulse_1.5s_ease-in-out_infinite]"></div>
+          </div>
+
+          <div className="w-64 flex justify-between text-xs font-bold">
+              <span>MEM_CHECK: OK</span>
+              <span>NET: CONNECTED</span>
+          </div>
       </div>
   );
 
   return (
     <div className="min-h-screen max-w-md mx-auto p-6 flex flex-col font-mono text-black">
 
-      {/* 4. PRELOADER: Hidden images for the next 5 items */}
       <div className="hidden">
         {deck.slice(1, 6).map(img => <img key={img.id} src={img.url} alt="preload" />)}
       </div>
 
       {/* HEADER */}
-      <div className="comic-box p-4 mb-8 flex justify-between items-start bg-white relative">
+      <div className="comic-box p-4 mb-6 flex justify-between items-start bg-white relative">
         <div className={`absolute -top-3 -right-3 text-[10px] font-bold px-2 py-1 border-2 border-black bg-green-400 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`}>
             ● LIVE SIGNAL
         </div>
@@ -187,13 +192,13 @@ export default function PlayPage() {
           <div className="text-4xl font-bold mt-1">${balance}</div>
         </div>
         <div className="text-right mt-2">
-          <span className="text-xs font-bold text-gray-500">WAGER ({wagerPercent}%)</span>
-          <div className="text-2xl font-bold text-neon-red">${currentWagerAmount}</div>
+           <div className="text-xs font-bold text-gray-500 mb-1">STREAK: <span className="text-black">{streak}</span></div>
+           <div className="text-2xl font-bold text-neon-red">${currentWagerAmount}</div>
         </div>
       </div>
 
       {/* GAME AREA */}
-      <div className="relative mb-8">
+      <div className="relative mb-6">
         <GameCard
             key={currentImage.id}
             src={currentImage.url}
@@ -213,7 +218,9 @@ export default function PlayPage() {
 
               <div className="text-xs text-gray-500 mb-6 border-t border-gray-200 pt-4">
                 DATA SOURCE:<br/>
-                <span className="font-bold text-black">{result.source}</span>
+                <a href={result.source_url} target="_blank" className="font-bold text-blue-600 underline hover:text-blue-800">
+                    {result.source} ↗
+                </a>
               </div>
 
               <button onClick={nextCard} className="comic-button w-full bg-blue-300 py-4 font-bold text-xl hover:bg-blue-400 hover:-translate-y-1 transition-all">
@@ -228,25 +235,21 @@ export default function PlayPage() {
       {!result && (
         <div className="space-y-6">
           <div className="comic-box p-4 bg-yellow-100">
-             <div className="flex justify-between text-xs font-bold mb-2">
+             <div className="flex justify-between text-xs font-bold mb-4">
                <span>RISK: {wagerPercent}%</span>
                <span>MAX: ${balance}</span>
              </div>
 
-             <input
-                type="range"
-                min="1"
-                max="100"
-                step="1"
-                value={wagerPercent}
-                onChange={(e) => setWagerPercent(Number(e.target.value))}
-                className="w-full mb-4 accent-black h-2 bg-black rounded-lg appearance-none cursor-pointer"
-             />
-
-             <div className="flex gap-2">
-                 <button onClick={() => setWagerPercent(25)} className="comic-button flex-1 bg-white py-2 text-xs font-bold hover:bg-gray-50">25%</button>
-                 <button onClick={() => setWagerPercent(50)} className="comic-button flex-1 bg-white py-2 text-xs font-bold hover:bg-gray-50">50%</button>
-                 <button onClick={() => setWagerPercent(100)} className="comic-button flex-1 bg-red-500 text-white py-2 text-xs font-bold hover:bg-red-600">ALL IN</button>
+             <div className="grid grid-cols-4 gap-2 h-12">
+                 {[10, 25, 50, 100].map((pct) => (
+                    <button
+                        key={pct}
+                        onClick={() => setWagerPercent(pct)}
+                        className={`comic-button font-bold text-xs hover:-translate-y-1 transition-transform ${wagerPercent === pct ? 'bg-black text-white' : 'bg-white text-black'}`}
+                    >
+                        {pct === 100 ? 'ALL IN' : `${pct}%`}
+                    </button>
+                 ))}
              </div>
           </div>
 
@@ -257,8 +260,8 @@ export default function PlayPage() {
           )}
 
           <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => handleWager('real')} disabled={loadingResult} className="comic-button h-24 bg-green-400 text-3xl font-black hover:bg-green-500 active:bg-green-600 transition-colors">REAL</button>
-            <button onClick={() => handleWager('ai')} disabled={loadingResult} className="comic-button h-24 bg-pink-500 text-3xl font-black hover:bg-pink-600 active:bg-pink-700 transition-colors">AI</button>
+            <button onClick={() => handleWager('real')} disabled={loadingResult} className="comic-button h-24 bg-green-400 text-3xl font-black hover:bg-green-500 active:bg-green-600 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">REAL</button>
+            <button onClick={() => handleWager('ai')} disabled={loadingResult} className="comic-button h-24 bg-pink-500 text-3xl font-black hover:bg-pink-600 active:bg-pink-700 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">AI</button>
           </div>
         </div>
       )}

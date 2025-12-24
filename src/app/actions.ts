@@ -3,7 +3,6 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { IMAGE_BANK, getRandomBatch, ImageEntry } from '@/data/image-bank'
 
-// Use the Type from the bank, mapped to match legacy id type if needed
 export type GameImage = ImageEntry;
 
 type WagerResult = {
@@ -34,19 +33,23 @@ async function createClient() {
 async function getUserAndBalance(supabase: any) {
   const { data: { user } } = await supabase.auth.getUser();
   let currentBalance = 1000;
+
   if (user) {
-    const { data: profile } = await supabase.from('profiles').select('current_balance').eq('id', user.id).single();
-    if (profile) currentBalance = profile.current_balance;
+    const { data: profile, error } = await supabase.from('profiles').select('current_balance').eq('id', user.id).single();
+
+    // 1. CRITICAL FIX: Auto-create profile if missing (common with anon auth)
+    if (error || !profile) {
+       console.log("Profile missing, creating default...");
+       const { error: insertError } = await supabase.from('profiles').insert([{ id: user.id, current_balance: 1000 }]);
+       if (!insertError) currentBalance = 1000;
+    } else {
+       currentBalance = profile.current_balance;
+    }
   }
   return { user, currentBalance };
 }
 
-// --- NEW: Get Batch of Images ---
 export async function getHandBatch(limit: number = 5): Promise<{ images: GameImage[], is_backup: boolean }> {
-  // 1. Try DB (Mocked for now to use Image Bank directly for stability)
-  // In a real app, you would query Supabase here.
-  // For this fix, we are prioritizing the stable IMAGE_BANK to stop 404s.
-
   const batch = getRandomBatch(limit);
   return { images: batch, is_backup: true };
 }
@@ -59,9 +62,7 @@ export async function submitWager(imageId: string, wagerAmount: number, guess: '
 
   if (wager < 1) return { error: 'INVALID_WAGER' };
 
-  // 1. FIX: Silent Resync logic
-  // If user thinks they have money but server disagrees, send back the real balance
-  // but don't count it as a "loss", just a reset.
+  // Silent Resync
   if (wager > currentBalance) {
     return {
         error: 'RESYNC_NEEDED',
@@ -71,7 +72,6 @@ export async function submitWager(imageId: string, wagerAmount: number, guess: '
 
   if (currentBalance < 10) return { error: 'BANKRUPT' };
 
-  // 2. Lookup Image
   let imageType = 'real';
   let imageSource = 'Unknown';
   let imageSourceUrl = '#';
@@ -83,12 +83,13 @@ export async function submitWager(imageId: string, wagerAmount: number, guess: '
       imageSource = bankImage.source;
       imageSourceUrl = bankImage.url;
   } else {
-      // Fallback for legacy ID types if they exist
       return { error: 'IMAGE_NOT_FOUND' };
   }
 
   const isCorrect = guess === imageType;
   const riskRatio = currentBalance > 0 ? (wager / currentBalance) : 0;
+
+  // High stakes multiplier logic
   const multiplier = 1.2 + (riskRatio * 0.8);
 
   const profit = isCorrect
@@ -110,14 +111,23 @@ export async function submitWager(imageId: string, wagerAmount: number, guess: '
   }
 }
 
-// Manual Labor
-export async function submitManualLabor(answer: number, correctAnswer: number, difficulty: number) {
+// 2. UX FIX: Manual Labor with Streak Multiplier
+// difficulty is base wage (5), streak adds multiplier
+export async function submitManualLabor(answer: number, correctAnswer: number, difficulty: number, combo: number = 0) {
   const supabase = await createClient()
   const { user, currentBalance } = await getUserAndBalance(supabase);
-  if (answer !== correctAnswer) return { success: false, message: "WRONG. WORK HARDER." };
-  const wage = difficulty * 5;
-  const newBalance = currentBalance + wage;
+
+  if (answer !== correctAnswer) return { success: false, message: "WRONG. DEBT REMAINS." };
+
+  // Wage Calculation: Base $5 + ($1 per streak point)
+  const baseWage = 5;
+  const bonus = Math.min(combo, 10); // Cap combo bonus at $10 extra
+  const totalWage = baseWage + bonus;
+
+  const newBalance = currentBalance + totalWage;
+
   if (user) await supabase.rpc('update_balance', { p_user_id: user.id, p_new_balance: newBalance });
+
   const released = newBalance >= 50;
-  return { success: true, new_balance: newBalance, wage, released };
+  return { success: true, new_balance: newBalance, wage: totalWage, released };
 }

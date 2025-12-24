@@ -38,11 +38,15 @@ export default function GameCard({ src, onSkip }: GameCardProps) {
 
   return (
     <div className="relative w-full aspect-[4/3] bg-white border-4 border-black rounded-xl overflow-hidden shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-      {/* 1. Loading Overlay */}
+      {/* 1. UPDATED: Brutalist/Noise Loading Overlay */}
       {loading && (
-        <div className="absolute inset-0 z-10 bg-gray-100 flex flex-col items-center justify-center font-mono">
-            <div className="w-12 h-12 border-4 border-black border-t-neon-green rounded-full animate-spin mb-4"></div>
-            <div className="text-sm font-bold animate-pulse">SCANNING SUBJECT...</div>
+        <div className="absolute inset-0 z-10 bg-[#e5e5e5] flex flex-col items-center justify-center font-mono overflow-hidden">
+            {/* Simple CSS "Static" Effect */}
+            <div className="absolute inset-0 opacity-20 bg-[repeating-linear-gradient(45deg,#000,#000_1px,transparent_1px,transparent_4px)]"></div>
+
+            <div className="z-10 bg-black text-white px-4 py-2 text-xl font-bold animate-pulse shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)]">
+                [ DECODING... ]
+            </div>
         </div>
       )}
 

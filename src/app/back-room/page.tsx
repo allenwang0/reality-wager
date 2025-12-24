@@ -12,6 +12,9 @@ export default function BackRoomPage() {
   const [feedback, setFeedback] = useState("");
   const [released, setReleased] = useState(false);
 
+  // 4. UX FIX: Streak/Combo System for Motivation
+  const [streak, setStreak] = useState(0);
+
   useEffect(() => {
     loadBalance();
     generateProblem();
@@ -30,7 +33,6 @@ export default function BackRoomPage() {
   }
 
   function generateProblem() {
-    // Generate simple arithmetic
     const a = Math.floor(Math.random() * 20) + 10;
     const b = Math.floor(Math.random() * 20) + 1;
     const op = Math.random() > 0.5 ? '+' : '-';
@@ -45,16 +47,20 @@ export default function BackRoomPage() {
     const val = parseInt(userAnswer);
     if (isNaN(val)) return;
 
-    // Call Server Action
-    const res = await submitManualLabor(val, problem.a, 1); // 1 = Difficulty
+    // Call Server Action with Streak
+    const res = await submitManualLabor(val, problem.a, 1, streak);
 
     if (res.success) {
       setBalance(res.new_balance || balance);
-      setFeedback(`EARNED $${res.wage}`);
+      const bonusText = streak > 0 ? ` (+${streak} BONUS)` : '';
+      setFeedback(`EARNED $${res.wage}${bonusText}`);
+      setStreak(s => s + 1); // Increment streak
+
       if (res.released) setReleased(true);
       generateProblem();
     } else {
       setFeedback(res.message || "ERROR");
+      setStreak(0); // Reset streak on fail
     }
   }
 
@@ -73,25 +79,43 @@ export default function BackRoomPage() {
     );
   }
 
+  // Calculate progress percent (Target is $50)
+  const progressPercent = Math.min(100, Math.max(0, (balance / 50) * 100));
+
   return (
-    <div className="min-h-screen bg-[#333] text-white flex flex-col items-center justify-center p-4 font-mono">
-      <div className="w-full max-w-md bg-black border-4 border-gray-600 p-8 shadow-2xl">
-        <div className="mb-8 text-center border-b border-gray-600 pb-4">
+    <div className="min-h-screen bg-[#111] text-white flex flex-col items-center justify-center p-4 font-mono">
+      <div className="w-full max-w-md bg-black border-4 border-gray-600 p-8 shadow-2xl relative overflow-hidden">
+
+        {/* Striped Background Effect */}
+        <div className="absolute inset-0 pointer-events-none opacity-10 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,#333_10px,#333_20px)]"></div>
+
+        <div className="mb-8 text-center border-b border-gray-600 pb-4 relative z-10">
           <h1 className="text-red-500 font-bold tracking-widest text-xl mb-2">THE BACK ROOM</h1>
           <p className="text-gray-400 text-xs">WORK OFF YOUR DEBT. TARGET: $50</p>
         </div>
 
-        <div className="flex justify-between items-center mb-12">
+        {/* Progress Bar */}
+        <div className="w-full h-4 bg-gray-800 border border-gray-600 mb-8 relative">
+            <div
+                className="h-full bg-red-600 transition-all duration-300"
+                style={{ width: `${progressPercent}%` }}
+            ></div>
+        </div>
+
+        <div className="flex justify-between items-center mb-6 relative z-10">
            <div className="text-gray-400 text-sm">CURRENT FUNDS</div>
            <div className="text-3xl font-bold text-red-500 font-mono">${balance}</div>
         </div>
 
-        <div className="bg-gray-900 p-6 border-2 border-gray-700 mb-6 text-center">
-           <div className="text-gray-500 text-xs mb-2">TASK: SOLVE</div>
+        <div className="bg-gray-900 p-6 border-2 border-gray-700 mb-6 text-center relative z-10">
+           <div className="flex justify-between items-center mb-4">
+               <div className="text-gray-500 text-xs">TASK: SOLVE</div>
+               <div className="text-xs font-bold text-yellow-400">COMBO: x{streak + 1}</div>
+           </div>
            <div className="text-4xl font-bold">{problem.q} = ?</div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex gap-4">
+        <form onSubmit={handleSubmit} className="flex gap-4 relative z-10">
           <input
             type="number"
             value={userAnswer}
@@ -108,7 +132,7 @@ export default function BackRoomPage() {
           </button>
         </form>
 
-        <div className="h-8 mt-4 text-center text-green-400 font-bold animate-pulse">
+        <div className="h-8 mt-4 text-center text-green-400 font-bold animate-pulse relative z-10">
           {feedback}
         </div>
       </div>
