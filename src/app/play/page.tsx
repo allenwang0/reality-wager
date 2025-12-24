@@ -13,6 +13,9 @@ export default function PlayPage() {
   const [loading, setLoading] = useState(false);
   const [isBankrupt, setIsBankrupt] = useState(false);
 
+  // NEW: State for inline error messages
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   useEffect(() => {
     const init = async () => {
       const supabase = createClient();
@@ -40,6 +43,7 @@ export default function PlayPage() {
   async function loadHand() {
     setLoading(true);
     setResult(null);
+    setErrorMsg(null); // Clear errors on new round
     try {
       const { image } = await getNextHand();
       if (image) setImage(image);
@@ -53,12 +57,39 @@ export default function PlayPage() {
   const handleWager = async (guess: 'real' | 'ai') => {
     if (wager > balance || loading) return;
     setLoading(true);
+    setErrorMsg(null); // Clear previous errors
+
     try {
       const res = await submitWager(image.id, wager, guess);
 
-      if (res?.error === 'BANKRUPT') { setIsBankrupt(true); return; }
-      if (res?.error) { alert(res.error); return; }
+      // 1. Handle Bankruptcy
+      if (res?.error === 'BANKRUPT') {
+          setIsBankrupt(true);
+          return;
+      }
 
+      // 2. Handle "Insufficient Funds" / Sync Issue
+      if (res?.error === 'INSUFFICIENT_FUNDS') {
+        setErrorMsg("Funds mismatch! Syncing...");
+
+        // If server sent back the REAL balance, update our UI immediately
+        if (res.server_balance !== undefined) {
+            setBalance(res.server_balance);
+            // Auto-adjust wager to the new max if needed
+            if (wager > res.server_balance) {
+                setWager(res.server_balance);
+            }
+        }
+        return;
+      }
+
+      // 3. Handle Generic Errors (Inline, no alert)
+      if (res?.error) {
+          setErrorMsg(res.error);
+          return;
+      }
+
+      // 4. Success
       if (res?.new_balance !== undefined) {
         setBalance(res.new_balance);
         setResult(res);
@@ -66,7 +97,7 @@ export default function PlayPage() {
         else if (wager > res.new_balance) setWager(Math.floor(res.new_balance / 2));
       }
     } catch (e) {
-      alert("System Error.");
+      setErrorMsg("Connection Error");
     } finally {
       setLoading(false);
     }
@@ -142,13 +173,22 @@ export default function PlayPage() {
                <span>RISK: {Math.floor(riskRatio * 100)}%</span>
                <span>MAX: ${balance}</span>
              </div>
+
              <input type="range" min="1" max={balance} value={wager} onChange={(e) => setWager(parseInt(e.target.value))} className="w-full mb-4 accent-black h-2 bg-black rounded-lg appearance-none" />
+
              <div className="flex gap-2">
                  <button onClick={() => setWager(Math.floor(balance * 0.25))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">25%</button>
                  <button onClick={() => setWager(Math.floor(balance * 0.50))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">50%</button>
                  <button onClick={() => setWager(balance)} className="comic-button flex-1 bg-red-500 text-white py-2 text-xs font-bold">ALL IN</button>
              </div>
           </div>
+
+          {/* INLINE ERROR MESSAGE (Replacing Popup) */}
+          {errorMsg && (
+             <div className="text-center font-bold text-red-600 bg-red-100 border-2 border-red-600 p-2 animate-pulse">
+                ⚠ {errorMsg}
+             </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <button onClick={() => handleWager('real')} disabled={loading} className="comic-button h-20 bg-green-400 text-2xl font-black hover:bg-green-500">REAL</button>

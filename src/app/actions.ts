@@ -2,13 +2,12 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-// 1. ROBUST TYPE DEFINITIONS
 export type GameImage = {
   id: number;
   url: string;
   type: 'real' | 'ai';
   source: string;
-  source_url: string; // New field for clickable links
+  source_url: string;
 };
 
 type WagerResult = {
@@ -18,9 +17,17 @@ type WagerResult = {
   source?: string;
   source_url?: string;
   error?: string;
+  server_balance?: number; // NEW: Send back real balance on error
 }
 
-// 2. UPDATED BACKUP DATA (With Source URLs)
+// ... [Keep BACKUP_IMAGES and createClient same as before] ...
+// ... [Keep getUserAndBalance helper same as before] ...
+// ... [Keep getNextHand same as before] ...
+
+// COPY BACKUP_IMAGES, createClient, getUserAndBalance, getNextHand from previous steps
+// Only submitWager changes below:
+
+// --- HELPER REPEATED FOR CONTEXT (Ensure this is in your file) ---
 const BACKUP_IMAGES: GameImage[] = [
   { id: 999, url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2', type: 'real', source: 'Unsplash', source_url: 'https://unsplash.com/photos/woman-wearing-black-framed-eyeglasses-smiling-Zyx1bK9mqmA' },
   { id: 998, url: 'https://img.freepik.com/premium-photo/portrait-young-woman-with-blue-eyes_1142-53644.jpg', type: 'ai', source: 'Freepik AI', source_url: 'https://freepik.com' },
@@ -44,7 +51,6 @@ async function createClient() {
   )
 }
 
-// --- HELPER: GET USER & BALANCE ---
 async function getUserAndBalance(supabase: any) {
   const { data: { user } } = await supabase.auth.getUser();
   let currentBalance = 1000;
@@ -55,47 +61,42 @@ async function getUserAndBalance(supabase: any) {
   return { user, currentBalance };
 }
 
-// --- ACTION 1: GET NEXT HAND ---
 export async function getNextHand(): Promise<{ image: GameImage }> {
   const supabase = await createClient()
   const { user } = await getUserAndBalance(supabase);
-
-  // Try DB RPC
   let { data, error } = await supabase.rpc('get_next_hand', { p_user_id: user?.id })
-
-  // Fallback Logic
   if (error || !data) {
      const { data: list } = await supabase.from('images').select('*').limit(50);
-     if (list && list.length > 0) {
-         data = list[Math.floor(Math.random() * list.length)];
-     }
+     if (list && list.length > 0) data = list[Math.floor(Math.random() * list.length)];
   }
-
-  // Final Backup (guaranteed shape)
-  if (!data) {
-     data = BACKUP_IMAGES[Math.floor(Math.random() * BACKUP_IMAGES.length)];
-  }
-
+  if (!data) data = BACKUP_IMAGES[Math.floor(Math.random() * BACKUP_IMAGES.length)];
   return { image: data }
 }
 
-// --- ACTION 2: SUBMIT WAGER ---
+// --- UPDATED SUBMIT WAGER ---
 export async function submitWager(imageId: number, wagerAmount: number, guess: 'real' | 'ai'): Promise<WagerResult> {
   const supabase = await createClient()
   const { user, currentBalance } = await getUserAndBalance(supabase);
 
-  // 1. SERVER SIDE VALIDATION
+  // 1. VALIDATION
   if (!Number.isInteger(wagerAmount) || wagerAmount < 1) {
-    return { error: 'INVALID_WAGER_AMOUNT' };
-  }
-  if (wagerAmount > currentBalance) {
-    return { error: 'INSUFFICIENT_FUNDS' };
-  }
-  if (currentBalance < 10) {
-    return { error: 'BANKRUPT' }; // User shouldn't be here
+    return { error: 'INVALID_WAGER' };
   }
 
-  // 2. FETCH TRUTH
+  // FIX: If user bets MORE than they have, return the error AND the actual balance
+  // This allows the UI to auto-correct the slider.
+  if (wagerAmount > currentBalance) {
+    return {
+        error: 'INSUFFICIENT_FUNDS',
+        server_balance: currentBalance // Send back truth
+    };
+  }
+
+  if (currentBalance < 10) {
+    return { error: 'BANKRUPT' };
+  }
+
+  // 2. FETCH IMAGE
   let imageType = 'real';
   let imageSource = 'Unknown';
   let imageSourceUrl = '#';
@@ -113,7 +114,7 @@ export async function submitWager(imageId: number, wagerAmount: number, guess: '
     imageSourceUrl = backup.source_url;
   }
 
-  // 3. GAME LOGIC
+  // 3. LOGIC
   const isCorrect = guess === imageType;
   const riskRatio = currentBalance > 0 ? (wagerAmount / currentBalance) : 0;
   const multiplier = 1.2 + (riskRatio * 0.8);
@@ -137,29 +138,14 @@ export async function submitWager(imageId: number, wagerAmount: number, guess: '
   }
 }
 
-// --- ACTION 3: MANUAL LABOR (For Back Room) ---
+// [Keep submitManualLabor from previous step]
 export async function submitManualLabor(answer: number, correctAnswer: number, difficulty: number) {
   const supabase = await createClient()
   const { user, currentBalance } = await getUserAndBalance(supabase);
-
-  // Basic cheat prevention (rudimentary)
-  if (answer !== correctAnswer) {
-    return { success: false, message: "WRONG. WORK HARDER." };
-  }
-
-  const wage = difficulty * 5; // $5 for easy, $10 for med, etc.
+  if (answer !== correctAnswer) return { success: false, message: "WRONG. WORK HARDER." };
+  const wage = difficulty * 5;
   const newBalance = currentBalance + wage;
-
-  if (user) {
-    await supabase.rpc('update_balance', { p_user_id: user.id, p_new_balance: newBalance });
-  }
-
-  const released = newBalance >= 50; // Threshold to leave room
-
-  return {
-    success: true,
-    new_balance: newBalance,
-    wage,
-    released
-  };
+  if (user) await supabase.rpc('update_balance', { p_user_id: user.id, p_new_balance: newBalance });
+  const released = newBalance >= 50;
+  return { success: true, new_balance: newBalance, wage, released };
 }
