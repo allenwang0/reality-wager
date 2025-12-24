@@ -6,33 +6,44 @@ import { ImageCategory } from '@/data/image-bank';
 import { createClient } from '@/lib/supabase/client';
 import GameCard from '@/components/GameCard';
 
-// ONBOARDING COMPONENT
+// SIMPLIFIED ONBOARDING COMPONENT
 function ProtocolBriefing({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 backdrop-blur-sm animate-in fade-in">
-      <div className="max-w-lg w-full border-2 border-protocol-signal p-6 bg-black relative">
-        <h2 className="text-2xl font-bold text-protocol-signal mb-4 uppercase tracking-widest border-b border-gray-800 pb-2">
-          Protocol V.2.0
+      <div className="max-w-md w-full border-2 border-protocol-signal p-6 bg-black relative shadow-[0_0_50px_rgba(0,255,50,0.1)]">
+        <h2 className="text-xl font-bold text-protocol-signal mb-6 uppercase tracking-widest border-b border-gray-800 pb-2">
+          Operator Briefing
         </h2>
-        <div className="space-y-4 text-sm font-mono text-gray-300 mb-8">
-          <p>
-            <span className="text-white font-bold">1. SIGNAL VS NOISE:</span><br/>
-            You will be shown imagery. <span className="text-protocol-signal">REAL</span> = Photography (Humans, Objects, Nature). <span className="text-protocol-noise">AI</span> = Generated, 3D Rendered, or Simulated.
-          </p>
-          <p>
-            <span className="text-white font-bold">2. RISK ASSESSMENT:</span><br/>
-            Payouts scale with risk. Betting 100% of your bankroll yields 2.0x returns. Betting safe yields lower multipliers.
-          </p>
-          <p>
-            <span className="text-white font-bold">3. INSOLVENCY:</span><br/>
-            Drop below $10 and your clearance is revoked. You will be sent to the Back Room for manual labor.
-          </p>
+
+        <div className="space-y-6 text-sm font-mono text-gray-300 mb-8">
+          <div>
+            <strong className="text-white block mb-1">1. IDENTIFY</strong>
+            <ul className="list-disc pl-4 text-xs text-gray-400 space-y-1">
+              <li><span className="text-protocol-signal">REAL</span> = Photography (Even if edited).</li>
+              <li><span className="text-protocol-noise">AI</span> = Generated, Rendered, or Simulated.</li>
+            </ul>
+          </div>
+
+          <div>
+            <strong className="text-white block mb-1">2. RISK</strong>
+            <p className="text-xs text-gray-400">
+              Higher wagers = Higher multipliers (up to 2.0x).
+            </p>
+          </div>
+
+          <div>
+            <strong className="text-white block mb-1">3. CONSEQUENCE</strong>
+            <p className="text-xs text-gray-400">
+              Drop below $10 -> Forced manual labor.
+            </p>
+          </div>
         </div>
+
         <button
           onClick={onClose}
-          className="w-full bg-protocol-signal text-black font-bold py-3 hover:bg-white transition-colors uppercase tracking-widest"
+          className="w-full bg-protocol-signal text-black font-bold py-4 hover:bg-white transition-colors uppercase tracking-widest text-sm"
         >
-          [ Acknowledge & Begin ]
+          [ I Understand ]
         </button>
       </div>
     </div>
@@ -58,6 +69,8 @@ export default function PlayPage() {
   const [fetchingDeck, setFetchingDeck] = useState(false);
   const [isBankrupt, setIsBankrupt] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Tutorial State
   const [showTutorial, setShowTutorial] = useState(false);
 
   // Calculate Wager & Profit Potential
@@ -107,7 +120,6 @@ export default function PlayPage() {
     if (fetchingDeck) return;
     setFetchingDeck(true);
     try {
-      // Pass the current category (or forced one) to the server action
       const targetCategory = forceCategory || category;
       const { images } = await getHandBatch(15, targetCategory);
 
@@ -131,16 +143,10 @@ export default function PlayPage() {
   const handleCategoryChange = (newCat: string) => {
     const cat = newCat as ImageCategory;
     if (cat === category) return;
-
-    // 1. Set State
     setCategory(cat);
-
-    // 2. Clear deck to force loading state/refresh
     setDeck([]);
     setHistory([]);
     setResult(null);
-
-    // 3. Fetch new cards with new category immediately
     fetchMoreCards(false, cat);
   };
 
@@ -248,10 +254,21 @@ export default function PlayPage() {
 
       {/* DESKTOP HEADER */}
       <div className="flex justify-between items-end border-b border-protocol-gray pb-4 mb-6">
-        <div>
-           <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">Operator Funds</div>
-           <div className="text-3xl font-bold tracking-tighter">${balance.toLocaleString()}</div>
+        <div className="flex items-end gap-4">
+           <div>
+             <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">Operator Funds</div>
+             <div className="text-3xl font-bold tracking-tighter">${balance.toLocaleString()}</div>
+           </div>
+
+           {/* REOPEN INSTRUCTIONS BUTTON */}
+           <button
+             onClick={() => setShowTutorial(true)}
+             className="mb-1 text-xs text-protocol-signal border border-protocol-signal px-2 py-1 hover:bg-protocol-signal hover:text-black transition-colors"
+           >
+             [ ? ] HELP
+           </button>
         </div>
+
         <div className="flex gap-4">
            <div className="text-right">
               <div className="text-xs text-gray-500 uppercase">Streak</div>
@@ -300,7 +317,7 @@ export default function PlayPage() {
         {!result && (
           <div className="flex flex-col justify-center space-y-6">
 
-            {/* NEW FEATURE: Signal Frequency Selector */}
+            {/* Signal Frequency Selector */}
             <div className="bg-protocol-dark border border-protocol-gray p-4">
               <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Signal Frequency</div>
               <div className="grid grid-cols-4 gap-2">
