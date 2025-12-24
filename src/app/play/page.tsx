@@ -12,9 +12,10 @@ export default function PlayPage() {
   const [wager, setWager] = useState<number>(50);
   const [loading, setLoading] = useState(false);
   const [isBankrupt, setIsBankrupt] = useState(false);
-
-  // NEW: State for inline error messages
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // NEW: DB Status Indicator
+  const [dbStatus, setDbStatus] = useState<'LIVE' | 'OFFLINE'>('OFFLINE');
 
   useEffect(() => {
     const init = async () => {
@@ -43,10 +44,14 @@ export default function PlayPage() {
   async function loadHand() {
     setLoading(true);
     setResult(null);
-    setErrorMsg(null); // Clear errors on new round
+    setErrorMsg(null);
     try {
-      const { image } = await getNextHand();
-      if (image) setImage(image);
+      // getNextHand now returns { image, is_backup }
+      const res = await getNextHand();
+      if (res?.image) {
+          setImage(res.image);
+          setDbStatus(res.is_backup ? 'OFFLINE' : 'LIVE');
+      }
     } catch (e) {
       console.error("Load Error:", e);
     } finally {
@@ -57,25 +62,22 @@ export default function PlayPage() {
   const handleWager = async (guess: 'real' | 'ai') => {
     if (wager > balance || loading) return;
     setLoading(true);
-    setErrorMsg(null); // Clear previous errors
+    setErrorMsg(null);
 
     try {
       const res = await submitWager(image.id, wager, guess);
 
-      // 1. Handle Bankruptcy
       if (res?.error === 'BANKRUPT') {
           setIsBankrupt(true);
           return;
       }
 
-      // 2. Handle "Insufficient Funds" / Sync Issue
+      // FIX: Handle Funds Mismatch gracefully
       if (res?.error === 'INSUFFICIENT_FUNDS') {
-        setErrorMsg("Funds mismatch! Syncing...");
-
-        // If server sent back the REAL balance, update our UI immediately
+        setErrorMsg("Funds mismatch! Resyncing...");
         if (res.server_balance !== undefined) {
             setBalance(res.server_balance);
-            // Auto-adjust wager to the new max if needed
+            // If my wager is now impossible, force it down
             if (wager > res.server_balance) {
                 setWager(res.server_balance);
             }
@@ -83,17 +85,16 @@ export default function PlayPage() {
         return;
       }
 
-      // 3. Handle Generic Errors (Inline, no alert)
       if (res?.error) {
           setErrorMsg(res.error);
           return;
       }
 
-      // 4. Success
       if (res?.new_balance !== undefined) {
         setBalance(res.new_balance);
         setResult(res);
         if (res.new_balance < 10) setIsBankrupt(true);
+        // Ensure next wager is valid
         else if (wager > res.new_balance) setWager(Math.floor(res.new_balance / 2));
       }
     } catch (e) {
@@ -127,12 +128,17 @@ export default function PlayPage() {
   return (
     <div className="min-h-screen max-w-md mx-auto p-6 flex flex-col font-mono text-black">
       {/* HEADER */}
-      <div className="comic-box p-4 mb-8 flex justify-between items-center bg-white">
+      <div className="comic-box p-4 mb-8 flex justify-between items-start bg-white relative">
+        {/* CONNECTION INDICATOR */}
+        <div className={`absolute -top-3 -right-3 text-[10px] font-bold px-2 py-1 border-2 border-black ${dbStatus === 'LIVE' ? 'bg-green-400' : 'bg-gray-400'}`}>
+            {dbStatus === 'LIVE' ? '● LIVE DB' : '○ OFFLINE'}
+        </div>
+
         <div>
           <span className="text-xs font-bold bg-black text-white px-1">BANKROLL</span>
           <div className="text-4xl font-bold mt-1">${balance}</div>
         </div>
-        <div className="text-right">
+        <div className="text-right mt-2">
           <span className="text-xs font-bold text-gray-500">CURRENT BET</span>
           <div className="text-2xl font-bold">${wager}</div>
         </div>
@@ -174,16 +180,22 @@ export default function PlayPage() {
                <span>MAX: ${balance}</span>
              </div>
 
-             <input type="range" min="1" max={balance} value={wager} onChange={(e) => setWager(parseInt(e.target.value))} className="w-full mb-4 accent-black h-2 bg-black rounded-lg appearance-none" />
+             <input
+                type="range"
+                min="1"
+                max={balance}
+                value={wager}
+                onChange={(e) => setWager(Math.floor(Number(e.target.value)))}
+                className="w-full mb-4 accent-black h-2 bg-black rounded-lg appearance-none"
+             />
 
              <div className="flex gap-2">
-                 <button onClick={() => setWager(Math.floor(balance * 0.25))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">25%</button>
-                 <button onClick={() => setWager(Math.floor(balance * 0.50))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">50%</button>
+                 <button onClick={() => setWager(Math.max(1, Math.floor(balance * 0.25)))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">25%</button>
+                 <button onClick={() => setWager(Math.max(1, Math.floor(balance * 0.50)))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">50%</button>
                  <button onClick={() => setWager(balance)} className="comic-button flex-1 bg-red-500 text-white py-2 text-xs font-bold">ALL IN</button>
              </div>
           </div>
 
-          {/* INLINE ERROR MESSAGE (Replacing Popup) */}
           {errorMsg && (
              <div className="text-center font-bold text-red-600 bg-red-100 border-2 border-red-600 p-2 animate-pulse">
                 ⚠ {errorMsg}
