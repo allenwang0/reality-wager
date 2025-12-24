@@ -1,14 +1,10 @@
 'use server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { IMAGE_BANK, getRandomBatch, ImageEntry } from '@/data/image-bank'
 
-export type GameImage = {
-  id: number;
-  url: string;
-  type: 'real' | 'ai';
-  source: string;
-  source_url: string;
-};
+// Use the Type from the bank, mapped to match legacy id type if needed
+export type GameImage = ImageEntry;
 
 type WagerResult = {
   new_balance?: number;
@@ -19,13 +15,6 @@ type WagerResult = {
   error?: string;
   server_balance?: number;
 }
-
-// 1. BACKUP DATA
-const BACKUP_IMAGES: GameImage[] = [
-  { id: 999, url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2', type: 'real', source: 'Unsplash', source_url: 'https://unsplash.com' },
-  { id: 998, url: 'https://img.freepik.com/premium-photo/portrait-young-woman-with-blue-eyes_1142-53644.jpg', type: 'ai', source: 'Freepik AI', source_url: 'https://freepik.com' },
-  { id: 997, url: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126', type: 'real', source: 'Unsplash', source_url: 'https://unsplash.com' },
-];
 
 async function createClient() {
   const cookieStore = await cookies()
@@ -52,72 +41,56 @@ async function getUserAndBalance(supabase: any) {
   return { user, currentBalance };
 }
 
-// --- UPDATED: GetNextHand with Source Flag ---
-export async function getNextHand(): Promise<{ image: GameImage, is_backup: boolean }> {
-  const supabase = await createClient()
-  const { user } = await getUserAndBalance(supabase);
+// --- NEW: Get Batch of Images ---
+export async function getHandBatch(limit: number = 5): Promise<{ images: GameImage[], is_backup: boolean }> {
+  // 1. Try DB (Mocked for now to use Image Bank directly for stability)
+  // In a real app, you would query Supabase here.
+  // For this fix, we are prioritizing the stable IMAGE_BANK to stop 404s.
 
-  // 1. Try DB RPC
-  let { data, error } = await supabase.rpc('get_next_hand', { p_user_id: user?.id })
-
-  if (data) {
-      return { image: data, is_backup: false }; // SUCCESS: Came from DB
-  }
-
-  // 2. Fallback: Standard Select
-  if (error || !data) {
-     const { data: list } = await supabase.from('images').select('*').limit(50);
-     if (list && list.length > 0) {
-         data = list[Math.floor(Math.random() * list.length)];
-         return { image: data, is_backup: false }; // SUCCESS: Came from DB
-     }
-  }
-
-  // 3. Absolute Fail: Backup
-  data = BACKUP_IMAGES[Math.floor(Math.random() * BACKUP_IMAGES.length)];
-  return { image: data, is_backup: true }; // FAIL: Came from Backup
+  const batch = getRandomBatch(limit);
+  return { images: batch, is_backup: true };
 }
 
-export async function submitWager(imageId: number, wagerAmount: number, guess: 'real' | 'ai'): Promise<WagerResult> {
+export async function submitWager(imageId: string, wagerAmount: number, guess: 'real' | 'ai'): Promise<WagerResult> {
   const supabase = await createClient()
   const { user, currentBalance } = await getUserAndBalance(supabase);
 
-  // Ensure strict integer math
   const wager = Math.floor(wagerAmount);
 
   if (wager < 1) return { error: 'INVALID_WAGER' };
 
+  // 1. FIX: Silent Resync logic
+  // If user thinks they have money but server disagrees, send back the real balance
+  // but don't count it as a "loss", just a reset.
   if (wager > currentBalance) {
     return {
-        error: 'INSUFFICIENT_FUNDS',
+        error: 'RESYNC_NEEDED',
         server_balance: currentBalance
     };
   }
 
   if (currentBalance < 10) return { error: 'BANKRUPT' };
 
+  // 2. Lookup Image
   let imageType = 'real';
   let imageSource = 'Unknown';
   let imageSourceUrl = '#';
 
-  const { data: dbImage } = await supabase.from('images').select('*').eq('id', imageId).single();
-  if (dbImage) {
-    imageType = dbImage.type;
-    imageSource = dbImage.source;
-    imageSourceUrl = dbImage.source_url || '#';
+  const bankImage = IMAGE_BANK.find(img => img.id === imageId);
+
+  if (bankImage) {
+      imageType = bankImage.type;
+      imageSource = bankImage.source;
+      imageSourceUrl = bankImage.url;
   } else {
-    const backup = BACKUP_IMAGES.find(img => img.id === imageId);
-    if (!backup) return { error: 'IMAGE_NOT_FOUND' };
-    imageType = backup.type;
-    imageSource = backup.source;
-    imageSourceUrl = backup.source_url;
+      // Fallback for legacy ID types if they exist
+      return { error: 'IMAGE_NOT_FOUND' };
   }
 
   const isCorrect = guess === imageType;
   const riskRatio = currentBalance > 0 ? (wager / currentBalance) : 0;
   const multiplier = 1.2 + (riskRatio * 0.8);
 
-  // Strict Floor Math for Profit
   const profit = isCorrect
     ? Math.floor(wager * (multiplier - 1))
     : -wager;
@@ -137,7 +110,7 @@ export async function submitWager(imageId: number, wagerAmount: number, guess: '
   }
 }
 
-// Manual Labor Function remains the same...
+// Manual Labor
 export async function submitManualLabor(answer: number, correctAnswer: number, difficulty: number) {
   const supabase = await createClient()
   const { user, currentBalance } = await getUserAndBalance(supabase);
