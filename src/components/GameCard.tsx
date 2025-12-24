@@ -5,9 +5,10 @@ import { useState, useEffect } from 'react';
 type GameCardProps = {
   src: string;
   onSkip: () => void;
+  isActive?: boolean; // FIX: Added prop
 };
 
-export default function GameCard({ src, onSkip }: GameCardProps) {
+export default function GameCard({ src, onSkip, isActive = false }: GameCardProps) {
   const [loading, setLoading] = useState(true);
   const [displayError, setDisplayError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -65,15 +66,16 @@ export default function GameCard({ src, onSkip }: GameCardProps) {
         </div>
       )}
 
-      {/* OPTIMIZATION:
-        - decoding="sync" forces immediate main-thread decoding
-        - loading="eager" prioritizes the fetch
-      */}
+      {/* FIX: Optimized Image Loading */}
       <img
         src={src}
         alt="Subject"
-        decoding="sync"
-        loading="eager"
+        decoding="async" // Async decode prevents main thread blocking
+        loading={isActive ? "eager" : "lazy"} // Only eager load active card
+        // fetchPriority is a valid attribute in React 19 / Modern Browsers,
+        // but TypeScript might complain depending on version. Casting or ignoring if needed.
+        // @ts-ignore
+        fetchPriority={isActive ? "high" : "auto"}
         className={`w-full h-full object-cover transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
         onLoad={() => setLoading(false)}
         onError={handleImageError}
