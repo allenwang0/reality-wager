@@ -2,6 +2,15 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+// 1. Define the specific return type to satisfy TypeScript
+type WagerResult = {
+  new_balance?: number;
+  isCorrect?: boolean;
+  profit?: number;
+  source?: string;
+  error?: string; // This tells TS that checking .error is valid
+}
+
 async function createClient() {
   const cookieStore = await cookies()
   return createServerClient(
@@ -45,7 +54,8 @@ export async function getNextHand() {
   return { image: data }
 }
 
-export async function submitWager(imageId: number, wagerAmount: number, guess: 'real' | 'ai') {
+// 2. Add the return type annotation: Promise<WagerResult>
+export async function submitWager(imageId: number, wagerAmount: number, guess: 'real' | 'ai'): Promise<WagerResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -60,10 +70,17 @@ export async function submitWager(imageId: number, wagerAmount: number, guess: '
 
   // Default to 1000 if profile missing, Default to 'real' if image missing
   const currentBalance = profile ? profile.current_balance : 1000;
+
+  // 3. BANKRUPTCY CHECK
+  // If user has less than 10 credits, prevent play and return error
+  if (currentBalance < 10) {
+    return { error: 'BANKRUPT' };
+  }
+
   const imageType = image ? image.type : 'real';
   const imageSource = image ? image.source : 'Unknown';
 
-  // 3. Logic
+  // 4. Logic
   const isCorrect = guess === imageType;
   let newBalance = currentBalance;
   const riskRatio = currentBalance > 0 ? (wagerAmount / currentBalance) : 0;
@@ -72,7 +89,7 @@ export async function submitWager(imageId: number, wagerAmount: number, guess: '
 
   newBalance += profit;
 
-  // 4. Update Database (Background Task - Don't let errors stop the game)
+  // 5. Update Database (Background Task - Don't let errors stop the game)
   const { error } = await supabase.rpc('update_balance', {
     p_user_id: user.id,
     p_new_balance: newBalance
