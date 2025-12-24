@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getHandBatch, submitWager, type GameImage } from '@/app/actions';
+import { ImageCategory } from '@/data/image-bank';
 import { createClient } from '@/lib/supabase/client';
 import GameCard from '@/components/GameCard';
 
@@ -45,6 +46,9 @@ export default function PlayPage() {
   const [streak, setStreak] = useState(0);
   const [result, setResult] = useState<any>(null);
 
+  // Game Mode State
+  const [category, setCategory] = useState<ImageCategory>('general');
+
   // Wager State
   const [wagerMode, setWagerMode] = useState<'percent' | 'custom'>('percent');
   const [wagerPercent, setWagerPercent] = useState<number>(10);
@@ -62,14 +66,12 @@ export default function PlayPage() {
     : Math.min(balance, Math.max(1, parseInt(customAmount) || 0));
 
   const riskRatio = balance > 0 ? currentWagerAmount / balance : 0;
-  // Matches server logic: 1.2 + (riskRatio * 0.8)
   const estMultiplier = 1.2 + (riskRatio * 0.8);
   const potentialProfit = Math.floor(currentWagerAmount * (estMultiplier - 1));
 
   // Initial Load & Tutorial Check
   useEffect(() => {
     const init = async () => {
-      // Tutorial Check
       const hasSeenTutorial = localStorage.getItem('reality_wager_tutorial');
       if (!hasSeenTutorial) setShowTutorial(true);
 
@@ -80,7 +82,7 @@ export default function PlayPage() {
         user = data.user;
       }
       if(user) await loadBalance(user.id);
-      await fetchMoreCards(true);
+      await fetchMoreCards(true, 'general');
     };
     init();
   }, []);
@@ -101,11 +103,14 @@ export default function PlayPage() {
   }, [deck]);
 
   // Deck Management
-  async function fetchMoreCards(isInitial = false) {
+  async function fetchMoreCards(isInitial = false, forceCategory?: ImageCategory) {
     if (fetchingDeck) return;
     setFetchingDeck(true);
     try {
-      const { images } = await getHandBatch(15);
+      // Pass the current category (or forced one) to the server action
+      const targetCategory = forceCategory || category;
+      const { images } = await getHandBatch(15, targetCategory);
+
       setDeck(prev => {
         const currentIds = new Set(prev.map(i => i.id));
         let newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
@@ -121,6 +126,23 @@ export default function PlayPage() {
       setFetchingDeck(false);
     }
   }
+
+  // Handle Category Change
+  const handleCategoryChange = (newCat: string) => {
+    const cat = newCat as ImageCategory;
+    if (cat === category) return;
+
+    // 1. Set State
+    setCategory(cat);
+
+    // 2. Clear deck to force loading state/refresh
+    setDeck([]);
+    setHistory([]);
+    setResult(null);
+
+    // 3. Fetch new cards with new category immediately
+    fetchMoreCards(false, cat);
+  };
 
   // Infinite Scroll Trigger
   useEffect(() => {
@@ -208,7 +230,7 @@ export default function PlayPage() {
   if (!currentImage) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center font-mono bg-protocol-black text-white">
-              <div className="text-xs font-bold tracking-[0.5em] mb-4 text-gray-500">ESTABLISHING UPLINK</div>
+              <div className="text-xs font-bold tracking-[0.5em] mb-4 text-gray-500">TUNING FREQUENCY...</div>
               <div className="w-48 h-px bg-gray-800 relative overflow-hidden">
                   <div className="absolute inset-0 bg-white animate-[scan_1.5s_ease-in-out_infinite] transform translate-x-[-100%]"></div>
               </div>
@@ -253,7 +275,6 @@ export default function PlayPage() {
                 src={currentImage.url}
                 onSkip={nextCard}
             />
-            {/* Result Overlay remains positioned over image */}
             {result && (
               <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200 border border-white/20">
                 <div className="w-full text-center py-8">
@@ -278,6 +299,26 @@ export default function PlayPage() {
         {/* RIGHT COL: CONTROL PANEL */}
         {!result && (
           <div className="flex flex-col justify-center space-y-6">
+
+            {/* NEW FEATURE: Signal Frequency Selector */}
+            <div className="bg-protocol-dark border border-protocol-gray p-4">
+              <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Signal Frequency</div>
+              <div className="grid grid-cols-4 gap-2">
+                {['general', 'faces', 'places', 'art'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => handleCategoryChange(cat)}
+                    className={`text-[10px] uppercase py-2 border transition-colors ${
+                      category === cat
+                      ? 'bg-protocol-white text-black border-white'
+                      : 'text-gray-500 border-gray-800 hover:border-gray-500'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Wager Controls */}
             <div className="bg-protocol-dark border border-protocol-gray p-4">

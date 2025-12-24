@@ -1,7 +1,7 @@
 'use server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { IMAGE_BANK, getRandomBatch, ImageEntry } from '@/data/image-bank'
+import { IMAGE_BANK, getRandomBatch, ImageEntry, ImageCategory } from '@/data/image-bank'
 
 export type GameImage = ImageEntry;
 
@@ -37,7 +37,6 @@ async function getUserAndBalance(supabase: any) {
   if (user) {
     const { data: profile, error } = await supabase.from('profiles').select('current_balance').eq('id', user.id).single();
 
-    // 1. CRITICAL FIX: Auto-create profile if missing (common with anon auth)
     if (error || !profile) {
        console.log("Profile missing, creating default...");
        const { error: insertError } = await supabase.from('profiles').insert([{ id: user.id, current_balance: 1000 }]);
@@ -49,8 +48,9 @@ async function getUserAndBalance(supabase: any) {
   return { user, currentBalance };
 }
 
-export async function getHandBatch(limit: number = 5): Promise<{ images: GameImage[], is_backup: boolean }> {
-  const batch = getRandomBatch(limit);
+// UPDATE: Accept category parameter
+export async function getHandBatch(limit: number = 5, category: ImageCategory = 'general'): Promise<{ images: GameImage[], is_backup: boolean }> {
+  const batch = getRandomBatch(limit, category);
   return { images: batch, is_backup: true };
 }
 
@@ -62,7 +62,6 @@ export async function submitWager(imageId: string, wagerAmount: number, guess: '
 
   if (wager < 1) return { error: 'INVALID_WAGER' };
 
-  // Silent Resync
   if (wager > currentBalance) {
     return {
         error: 'RESYNC_NEEDED',
@@ -88,8 +87,6 @@ export async function submitWager(imageId: string, wagerAmount: number, guess: '
 
   const isCorrect = guess === imageType;
   const riskRatio = currentBalance > 0 ? (wager / currentBalance) : 0;
-
-  // High stakes multiplier logic
   const multiplier = 1.2 + (riskRatio * 0.8);
 
   const profit = isCorrect
@@ -111,17 +108,14 @@ export async function submitWager(imageId: string, wagerAmount: number, guess: '
   }
 }
 
-// 2. UX FIX: Manual Labor with Streak Multiplier
-// difficulty is base wage (5), streak adds multiplier
 export async function submitManualLabor(answer: number, correctAnswer: number, difficulty: number, combo: number = 0) {
   const supabase = await createClient()
   const { user, currentBalance } = await getUserAndBalance(supabase);
 
   if (answer !== correctAnswer) return { success: false, message: "WRONG. DEBT REMAINS." };
 
-  // Wage Calculation: Base $5 + ($1 per streak point)
   const baseWage = 5;
-  const bonus = Math.min(combo, 10); // Cap combo bonus at $10 extra
+  const bonus = Math.min(combo, 10);
   const totalWage = baseWage + bonus;
 
   const newBalance = currentBalance + totalWage;
