@@ -5,23 +5,74 @@ import { getHandBatch, submitWager, type GameImage } from '@/app/actions';
 import { createClient } from '@/lib/supabase/client';
 import GameCard from '@/components/GameCard';
 
+// ONBOARDING COMPONENT
+function ProtocolBriefing({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 backdrop-blur-sm animate-in fade-in">
+      <div className="max-w-lg w-full border-2 border-protocol-signal p-6 bg-black relative">
+        <h2 className="text-2xl font-bold text-protocol-signal mb-4 uppercase tracking-widest border-b border-gray-800 pb-2">
+          Protocol V.2.0
+        </h2>
+        <div className="space-y-4 text-sm font-mono text-gray-300 mb-8">
+          <p>
+            <span className="text-white font-bold">1. SIGNAL VS NOISE:</span><br/>
+            You will be shown imagery. <span className="text-protocol-signal">REAL</span> = Photography (Humans, Objects, Nature). <span className="text-protocol-noise">AI</span> = Generated, 3D Rendered, or Simulated.
+          </p>
+          <p>
+            <span className="text-white font-bold">2. RISK ASSESSMENT:</span><br/>
+            Payouts scale with risk. Betting 100% of your bankroll yields 2.0x returns. Betting safe yields lower multipliers.
+          </p>
+          <p>
+            <span className="text-white font-bold">3. INSOLVENCY:</span><br/>
+            Drop below $10 and your clearance is revoked. You will be sent to the Back Room for manual labor.
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="w-full bg-protocol-signal text-black font-bold py-3 hover:bg-white transition-colors uppercase tracking-widest"
+        >
+          [ Acknowledge & Begin ]
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PlayPage() {
   const [balance, setBalance] = useState<number>(1000);
   const [deck, setDeck] = useState<GameImage[]>([]);
   const [history, setHistory] = useState<string[]>([]);
   const [streak, setStreak] = useState(0);
   const [result, setResult] = useState<any>(null);
+
+  // Wager State
+  const [wagerMode, setWagerMode] = useState<'percent' | 'custom'>('percent');
   const [wagerPercent, setWagerPercent] = useState<number>(10);
+  const [customAmount, setCustomAmount] = useState<string>("");
+
   const [loadingResult, setLoadingResult] = useState(false);
   const [fetchingDeck, setFetchingDeck] = useState(false);
   const [isBankrupt, setIsBankrupt] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showTutorial, setShowTutorial] = useState(false);
 
-  const currentWagerAmount = Math.max(1, Math.floor(balance * (wagerPercent / 100)));
+  // Calculate Wager & Profit Potential
+  const currentWagerAmount = wagerMode === 'percent'
+    ? Math.max(1, Math.floor(balance * (wagerPercent / 100)))
+    : Math.min(balance, Math.max(1, parseInt(customAmount) || 0));
 
-  // Initial Load
+  const riskRatio = balance > 0 ? currentWagerAmount / balance : 0;
+  // Matches server logic: 1.2 + (riskRatio * 0.8)
+  const estMultiplier = 1.2 + (riskRatio * 0.8);
+  const potentialProfit = Math.floor(currentWagerAmount * (estMultiplier - 1));
+
+  // Initial Load & Tutorial Check
   useEffect(() => {
     const init = async () => {
+      // Tutorial Check
+      const hasSeenTutorial = localStorage.getItem('reality_wager_tutorial');
+      if (!hasSeenTutorial) setShowTutorial(true);
+
       const supabase = createClient();
       let { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -34,10 +85,14 @@ export default function PlayPage() {
     init();
   }, []);
 
+  const closeTutorial = () => {
+    localStorage.setItem('reality_wager_tutorial', 'true');
+    setShowTutorial(false);
+  }
+
   // AGGRESSIVE PRELOADING LOGIC
   useEffect(() => {
     if (deck.length > 1) {
-      // Force JS to fetch the next 5 images immediately
       deck.slice(1, 6).forEach((img) => {
         const i = new Image();
         i.src = img.url;
@@ -51,11 +106,9 @@ export default function PlayPage() {
     setFetchingDeck(true);
     try {
       const { images } = await getHandBatch(15);
-
       setDeck(prev => {
         const currentIds = new Set(prev.map(i => i.id));
         let newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
-
         if (newUnique.length < 3 && images.length > 0) {
              setHistory([]);
              newUnique = images.filter(img => !currentIds.has(img.id));
@@ -103,6 +156,10 @@ export default function PlayPage() {
   const handleWager = async (guess: 'real' | 'ai') => {
     if (!deck[0]) return;
     if (currentWagerAmount > balance || loadingResult) return;
+    if (currentWagerAmount <= 0) {
+      setErrorMsg("INVALID WAGER");
+      return;
+    }
 
     setLoadingResult(true);
     setErrorMsg(null);
@@ -148,7 +205,6 @@ export default function PlayPage() {
     )
   }
 
-  // Pre-load / Empty State
   if (!currentImage) {
       return (
           <div className="min-h-screen flex flex-col items-center justify-center font-mono bg-protocol-black text-white">
@@ -161,109 +217,147 @@ export default function PlayPage() {
   }
 
   return (
-    <div className="min-h-screen max-w-md mx-auto p-4 flex flex-col font-mono text-white">
+    <div className="min-h-screen p-4 md:p-8 flex flex-col font-mono text-white max-w-6xl mx-auto">
+      {showTutorial && <ProtocolBriefing onClose={closeTutorial} />}
 
-      {/* GHOST PRELOADER
-        Using opacity: 0 ensures the browser considers these "visible"
-        and downloads them with high priority, unlike display: none.
-      */}
       <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0 }}>
-        {deck.slice(1, 6).map(img => (
-            <img key={img.id} src={img.url} alt="preload" decoding="sync" />
-        ))}
+        {deck.slice(1, 6).map(img => <img key={img.id} src={img.url} alt="preload" decoding="sync" />)}
       </div>
 
-      {/* HEADER */}
-      <div className="border-b border-protocol-gray pb-4 mb-6 flex justify-between items-end">
+      {/* DESKTOP HEADER */}
+      <div className="flex justify-between items-end border-b border-protocol-gray pb-4 mb-6">
         <div>
-          <span className="text-[10px] text-gray-500 uppercase tracking-wider block mb-1">Current Balance</span>
-          <div className="text-3xl font-bold tracking-tighter">${balance.toLocaleString()}</div>
+           <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">Operator Funds</div>
+           <div className="text-3xl font-bold tracking-tighter">${balance.toLocaleString()}</div>
         </div>
-        <div className="text-right">
-           <div className="flex items-center justify-end space-x-2 text-[10px] text-gray-500 uppercase mb-1">
-             <div className={`w-2 h-2 rounded-full ${streak > 0 ? 'bg-protocol-signal' : 'bg-gray-700'}`}></div>
-             <span>Streak: {streak}</span>
+        <div className="flex gap-4">
+           <div className="text-right">
+              <div className="text-xs text-gray-500 uppercase">Streak</div>
+              <div className="text-xl font-bold text-protocol-signal">{streak}</div>
            </div>
-           <div className="text-xl text-protocol-highlight font-bold border border-protocol-gray px-3 py-1 bg-white/5">
-             ${currentWagerAmount}
+           <div className="text-right">
+              <div className="text-xs text-gray-500 uppercase">Latency</div>
+              <div className="text-xl font-bold text-gray-600">12ms</div>
            </div>
         </div>
       </div>
 
-      {/* GAME AREA */}
-      <div className="relative mb-8 grow flex flex-col justify-center">
-        <GameCard
-            key={currentImage.id}
-            src={currentImage.url}
-            onSkip={nextCard}
-        />
+      {/* RESPONSIVE LAYOUT GRID */}
+      <div className="grow grid grid-cols-1 md:grid-cols-[1fr_350px] gap-6 md:gap-12">
 
-        {/* RESULT OVERLAY */}
-        {result && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="w-full text-center border-y border-white py-8">
-              <div className="text-5xl font-black mb-2 uppercase tracking-tighter italic">
-                {result.isCorrect ? <span className="text-protocol-signal">VERIFIED</span> : <span className="text-protocol-noise">ERROR</span>}
+        {/* LEFT COL: IMAGE */}
+        <div className="relative flex flex-col justify-center">
+          <div className="relative aspect-[4/3] md:aspect-auto md:h-[600px] w-full">
+            <GameCard
+                key={currentImage.id}
+                src={currentImage.url}
+                onSkip={nextCard}
+            />
+            {/* Result Overlay remains positioned over image */}
+            {result && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200 border border-white/20">
+                <div className="w-full text-center py-8">
+                  <div className="text-6xl font-black mb-4 uppercase tracking-tighter italic">
+                    {result.isCorrect ? <span className="text-protocol-signal">VERIFIED</span> : <span className="text-protocol-noise">ERROR</span>}
+                  </div>
+                  <div className="text-3xl font-mono mb-2 text-white">
+                    {result.profit > 0 ? '+' : ''}{result.profit} CREDITS
+                  </div>
+                  <div className="text-[10px] text-gray-500 mb-8 uppercase tracking-widest">
+                    Source: {result.source}
+                  </div>
+                  <button onClick={nextCard} className="protocol-btn px-8 py-4 font-bold mx-auto border-white text-white hover:bg-white hover:text-black">
+                    [ NEXT SUBJECT ]
+                  </button>
+                </div>
               </div>
+            )}
+          </div>
+        </div>
 
-              <div className="text-2xl font-mono mb-4 text-white">
-                {result.profit > 0 ? '+' : ''}{result.profit} CREDITS
-              </div>
+        {/* RIGHT COL: CONTROL PANEL */}
+        {!result && (
+          <div className="flex flex-col justify-center space-y-6">
 
-              <div className="text-[10px] text-gray-500 mb-8 uppercase tracking-widest">
-                Source: {result.source}
-              </div>
+            {/* Wager Controls */}
+            <div className="bg-protocol-dark border border-protocol-gray p-4">
+               <div className="flex justify-between items-center mb-4">
+                 <span className="text-[10px] text-gray-500 uppercase tracking-widest">Wager Input</span>
+                 <div className="flex space-x-2">
+                    <button
+                      onClick={() => setWagerMode('percent')}
+                      className={`text-[10px] uppercase ${wagerMode === 'percent' ? 'text-white underline' : 'text-gray-600'}`}
+                    >Percent</button>
+                    <button
+                      onClick={() => setWagerMode('custom')}
+                      className={`text-[10px] uppercase ${wagerMode === 'custom' ? 'text-white underline' : 'text-gray-600'}`}
+                    >Custom</button>
+                 </div>
+               </div>
 
-              <button onClick={nextCard} className="protocol-btn w-full mx-auto max-w-[200px] py-4 font-bold">
-                [ NEXT SUBJECT ]
+               {wagerMode === 'percent' ? (
+                 <div className="grid grid-cols-4 gap-2 mb-4">
+                   {[10, 25, 50, 100].map((pct) => (
+                      <button
+                          key={pct}
+                          onClick={() => setWagerPercent(pct)}
+                          className={`py-2 text-xs font-bold border transition-all ${wagerPercent === pct ? 'bg-white text-black border-white' : 'bg-transparent text-gray-500 border-gray-700 hover:border-gray-500'}`}
+                      >
+                          {pct}%
+                      </button>
+                   ))}
+                 </div>
+               ) : (
+                  <div className="mb-4 relative">
+                    <span className="absolute left-3 top-2 text-gray-500">$</span>
+                    <input
+                      type="number"
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      placeholder="Enter Amount"
+                      className="w-full bg-black border border-gray-600 p-2 pl-6 text-white font-mono focus:border-protocol-signal focus:outline-none"
+                    />
+                  </div>
+               )}
+
+               <div className="border-t border-gray-800 pt-3">
+                 <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500">Total Wager:</span>
+                    <span className="text-white font-bold">${currentWagerAmount}</span>
+                 </div>
+                 <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Potential Return:</span>
+                    <span className="text-protocol-signal font-bold">+${potentialProfit}</span>
+                 </div>
+               </div>
+            </div>
+
+            {errorMsg && (
+               <div className="text-center text-[10px] text-protocol-noise border border-protocol-noise p-2 uppercase tracking-widest animate-pulse">
+                  ⚠ {errorMsg}
+               </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                  onClick={() => handleWager('real')}
+                  disabled={loadingResult}
+                  className="h-24 bg-transparent text-white font-bold text-2xl border border-gray-600 hover:bg-white hover:text-black hover:border-white transition-all uppercase tracking-widest disabled:opacity-50"
+              >
+                  REAL
+              </button>
+              <button
+                  onClick={() => handleWager('ai')}
+                  disabled={loadingResult}
+                  className="h-24 bg-transparent text-white font-bold text-2xl border border-gray-600 hover:bg-protocol-noise hover:text-white hover:border-protocol-noise transition-all uppercase tracking-widest disabled:opacity-50"
+              >
+                  AI
               </button>
             </div>
           </div>
         )}
       </div>
-
-      {/* CONTROLS */}
-      {!result && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center border-t border-protocol-gray pt-4">
-             <span className="text-[10px] text-gray-500 uppercase">Risk Level</span>
-             <div className="flex space-x-1">
-                 {[10, 25, 50, 100].map((pct) => (
-                    <button
-                        key={pct}
-                        onClick={() => setWagerPercent(pct)}
-                        className={`px-3 py-1 text-[10px] font-bold border transition-colors ${wagerPercent === pct ? 'bg-white text-black border-white' : 'bg-transparent text-gray-500 border-gray-800 hover:border-gray-600'}`}
-                    >
-                        {pct}%
-                    </button>
-                 ))}
-             </div>
-          </div>
-
-          {errorMsg && (
-             <div className="text-center text-[10px] text-protocol-noise border border-protocol-noise p-2 uppercase tracking-widest">
-                ⚠ {errorMsg}
-             </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <button
-                onClick={() => handleWager('real')}
-                disabled={loadingResult}
-                className="h-20 bg-protocol-gray text-white font-bold text-xl border border-protocol-gray hover:bg-white hover:text-black hover:border-white transition-all uppercase tracking-widest disabled:opacity-50"
-            >
-                REAL
-            </button>
-            <button
-                onClick={() => handleWager('ai')}
-                disabled={loadingResult}
-                className="h-20 bg-protocol-gray text-white font-bold text-xl border border-protocol-gray hover:bg-protocol-noise hover:text-white hover:border-protocol-noise transition-all uppercase tracking-widest disabled:opacity-50"
-            >
-                AI
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
