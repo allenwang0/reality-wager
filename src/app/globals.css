@@ -3,33 +3,59 @@
 @tailwind utilities;
 
 :root {
-  --comic-bg: #fffbeb;    /* Cream/Paper */
-  --comic-black: #050505; /* Ink Black */
-  --comic-red: #ff003c;   /* Action Red */
-  --comic-blue: #00f3ff;  /* Cyan/Print Blue */
-  --comic-yellow: #ffee00;/* Warning Yellow */
+  --bg-color: #050505;
+  --text-color: #e5e5e5;
+  --grid-color: rgba(255, 255, 255, 0.05);
 }
 
 body {
-  background-color: var(--comic-bg);
-  color: var(--comic-black);
-  font-family: 'Courier New', Courier, monospace; /* Typewriter style */
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: 'Menlo', 'Monaco', monospace;
+  /* Subtle grid background */
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 30px 30px;
 }
 
-/* Comic Book Utilities */
-.comic-box {
-  background-color: white;
-  border: 4px solid var(--comic-black);
-  box-shadow: 6px 6px 0px 0px var(--comic-black);
+/* PROTOCOL UI UTILITIES */
+.protocol-btn {
+  background: #111;
+  border: 1px solid #333;
+  color: #888;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.comic-button {
-  transition: all 0.1s;
-  border: 3px solid var(--comic-black);
-  box-shadow: 4px 4px 0px 0px var(--comic-black);
+.protocol-btn:hover:not(:disabled) {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
 }
 
-.comic-button:active {
-  transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0px 0px var(--comic-black);
+.protocol-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.protocol-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* CRT Scanline Effect */
+.scanline {
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0),
+    rgba(255,255,255,0) 50%,
+    rgba(0,0,0,0.1) 50%,
+    rgba(0,0,0,0.1)
+  );
+  background-size: 100% 4px;
+  pointer-events: none;
 }

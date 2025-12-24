@@ -8,63 +8,87 @@ type GameCardProps = {
 };
 
 export default function GameCard({ src, onSkip }: GameCardProps) {
-  const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [displayError, setDisplayError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Reset state when the image source changes (new round)
   useEffect(() => {
-    setError(false);
+    setDisplayError(false);
     setLoading(true);
+    setRetryCount(0);
   }, [src]);
 
-  if (error) {
-    return (
-      <div className="relative w-full aspect-[4/3] bg-gray-900 border-4 border-black rounded-xl overflow-hidden shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col items-center justify-center p-6 text-center">
-        <div className="text-red-500 font-mono text-4xl mb-2">⚠</div>
-        <h3 className="text-red-500 font-bold font-mono text-xl uppercase">Signal Lost</h3>
+  const handleImageError = () => {
+    // FIX: Do not show "Signal Lost" immediately.
+    // Auto-skip to the next card to keep the game flowing.
+    if (retryCount < 2) {
+       console.log("Image failed, auto-skipping...");
+       setRetryCount(prev => prev + 1);
+       onSkip();
+    } else {
+       // Only if we fail repeatedly do we show the error screen
+       setLoading(false);
+       setDisplayError(true);
+    }
+  };
 
+  if (displayError) {
+    return (
+      <div className="relative w-full aspect-[4/3] bg-protocol-dark border border-protocol-noise/50 flex flex-col items-center justify-center p-6 text-center">
+        <div className="text-protocol-noise font-mono text-4xl mb-4 animate-pulse">⚠</div>
+        <h3 className="text-protocol-noise font-bold font-mono text-sm uppercase tracking-widest mb-6">Signal Terminated</h3>
         <button
           onClick={() => {
-            setError(false);
+            setDisplayError(false);
             onSkip();
           }}
-          className="mt-6 bg-red-600 text-white font-mono font-bold px-6 py-3 border-2 border-white hover:bg-white hover:text-red-600 transition-colors uppercase tracking-widest"
+          className="px-6 py-2 border border-protocol-noise text-protocol-noise hover:bg-protocol-noise hover:text-black text-xs uppercase tracking-widest transition-colors"
         >
-          [ Skip Subject ]
+          [ Force Reconnect ]
         </button>
       </div>
     );
   }
 
   return (
-    <div className="relative w-full aspect-[4/3] bg-white border-4 border-black rounded-xl overflow-hidden shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-      {/* 1. UPDATED: Brutalist/Noise Loading Overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-10 bg-[#e5e5e5] flex flex-col items-center justify-center font-mono overflow-hidden">
-            {/* Simple CSS "Static" Effect */}
-            <div className="absolute inset-0 opacity-20 bg-[repeating-linear-gradient(45deg,#000,#000_1px,transparent_1px,transparent_4px)]"></div>
+    <div className="relative w-full aspect-[4/3] bg-protocol-black border border-protocol-gray overflow-hidden group">
 
-            <div className="z-10 bg-black text-white px-4 py-2 text-xl font-bold animate-pulse shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)]">
-                [ DECODING... ]
+      {/* LOADING OVERLAY - Always exists while loading, hides image */}
+      {loading && (
+        <div className="absolute inset-0 z-20 bg-protocol-black flex flex-col items-center justify-center font-mono">
+            <div className="flex items-center space-x-2 mb-2">
+                <div className="w-2 h-2 bg-white animate-blink"></div>
+                <div className="text-xs font-bold text-white tracking-widest">DECODING STREAM</div>
+            </div>
+            {/* Technical Loading Bar */}
+            <div className="w-32 h-1 bg-gray-800 overflow-hidden">
+                <div className="h-full bg-white animate-[scan_1s_ease-in-out_infinite] w-full origin-left transform scale-x-0"></div>
             </div>
         </div>
       )}
 
-      {/* 2. Image */}
+      {/* The Image */}
       <img
         src={src}
         alt="Subject"
-        className={`w-full h-full object-cover transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
+        className={`w-full h-full object-cover transition-opacity duration-500 ${loading ? 'opacity-0' : 'opacity-100'}`}
         onLoad={() => setLoading(false)}
-        onError={() => {
-            setLoading(false);
-            setError(true);
-        }}
+        onError={handleImageError}
       />
 
-      {/* 3. Scanline Effect (Visual Polish) */}
-      {!loading && !error && (
-        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10 bg-[length:100%_4px,6px_100%]"></div>
+      {/* UI Overlay: Scanlines & Vignette */}
+      {!loading && (
+        <>
+            <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_50%,rgba(0,0,0,0.4)_100%)] z-10"></div>
+            <div className="scanline absolute inset-0 z-10 opacity-30"></div>
+
+            {/* Metadata overlay */}
+            <div className="absolute bottom-4 left-4 z-10 flex space-x-4 text-[10px] uppercase tracking-widest text-white/50 font-bold">
+                <span>SRC: ENCRYPTED</span>
+                <span>RES: 4K</span>
+            </div>
+        </>
       )}
     </div>
   );

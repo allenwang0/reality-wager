@@ -2,22 +2,44 @@ import Link from 'next/link';
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8 text-center">
-      <h1 className="text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-green mb-4">
-        REALITY WAGER
-      </h1>
-      <p className="text-gray-400 mb-12 max-w-md text-sm">
-        CAN YOU DISTINGUISH THE SIGNAL FROM THE NOISE?
-        <br />
-        HIGH STAKES IMAGE VERIFICATION PROTOCOL.
-      </p>
+    <main className="flex min-h-screen flex-col items-center justify-center p-8 text-center relative overflow-hidden">
 
-      <Link
-        href="/play"
-        className="px-10 py-4 bg-neon-green text-black font-bold text-xl hover:scale-105 transition-transform border-2 border-transparent hover:border-white"
-      >
-        [ ENTER PROTOCOL ]
-      </Link>
+      {/* Ambient Background Glow */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.03)_0%,transparent_70%)] pointer-events-none" />
+
+      <div className="z-10 flex flex-col items-center max-w-2xl">
+        <div className="border border-protocol-gray bg-black/50 backdrop-blur-sm p-2 mb-8 animate-fade-in">
+           <span className="text-[10px] uppercase tracking-[0.3em] text-gray-500">v.2.0.4 // SYSTEM READY</span>
+        </div>
+
+        <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-6 text-white mix-blend-difference">
+          REALITY<br />WAGER
+        </h1>
+
+        <div className="h-px w-32 bg-protocol-gray mb-8"></div>
+
+        <p className="text-gray-400 mb-12 max-w-md text-sm md:text-base leading-relaxed font-mono">
+          <span className="text-protocol-white font-bold">PROTOCOL:</span> DISTINGUISH SIGNAL FROM NOISE.
+          <br />
+          <span className="text-protocol-white font-bold">STAKES:</span> HIGH.
+          <br />
+          <span className="text-protocol-white font-bold">OBJECTIVE:</span> VERIFY REALITY.
+        </p>
+
+        <Link
+          href="/play"
+          className="group relative px-12 py-5 bg-protocol-white text-black font-bold text-lg tracking-widest overflow-hidden transition-all hover:bg-protocol-signal hover:text-black"
+        >
+          <span className="relative z-10">[ INITIALIZE ]</span>
+          <div className="absolute inset-0 bg-white transform translate-y-full group-hover:translate-y-0 transition-transform duration-200 ease-in-out"></div>
+        </Link>
+
+        <div className="mt-16 grid grid-cols-3 gap-8 text-[10px] text-gray-600 uppercase tracking-widest">
+          <div>Secured by<br/>Supabase</div>
+          <div>Latency<br/>&lt; 50ms</div>
+          <div>Status<br/>Online</div>
+        </div>
+      </div>
     </main>
   );
 }
