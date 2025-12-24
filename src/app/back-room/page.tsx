@@ -2,22 +2,20 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { submitManualLabor } from '@/app/actions';
+import { generateProblem, submitManualLabor } from '@/app/actions';
 
 export default function BackRoomPage() {
   const router = useRouter();
   const [balance, setBalance] = useState(0);
-  const [problem, setProblem] = useState({ q: "Initializing...", a: 0 });
+  const [problem, setProblem] = useState({ q: "Initializing...", hash: "" });
   const [userAnswer, setUserAnswer] = useState("");
   const [feedback, setFeedback] = useState("");
   const [released, setReleased] = useState(false);
-
-  // 4. UX FIX: Streak/Combo System for Motivation
   const [streak, setStreak] = useState(0);
 
   useEffect(() => {
     loadBalance();
-    generateProblem();
+    fetchNewProblem();
   }, []);
 
   async function loadBalance() {
@@ -32,14 +30,10 @@ export default function BackRoomPage() {
     }
   }
 
-  function generateProblem() {
-    const a = Math.floor(Math.random() * 20) + 10;
-    const b = Math.floor(Math.random() * 20) + 1;
-    const op = Math.random() > 0.5 ? '+' : '-';
-    const q = `${a} ${op} ${b}`;
-    const ans = op === '+' ? a + b : a - b;
-    setProblem({ q, a: ans });
-    setUserAnswer("");
+  async function fetchNewProblem() {
+      const p = await generateProblem();
+      setProblem({ q: p.question, hash: p.hash });
+      setUserAnswer("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -47,20 +41,20 @@ export default function BackRoomPage() {
     const val = parseInt(userAnswer);
     if (isNaN(val)) return;
 
-    // Call Server Action with Streak
-    const res = await submitManualLabor(val, problem.a, 1, streak);
+    // Send answer AND hash to server for verification
+    const res = await submitManualLabor(val, problem.hash, streak);
 
     if (res.success) {
       setBalance(res.new_balance || balance);
       const bonusText = streak > 0 ? ` (+${streak} BONUS)` : '';
       setFeedback(`EARNED $${res.wage}${bonusText}`);
-      setStreak(s => s + 1); // Increment streak
+      setStreak(s => s + 1);
 
       if (res.released) setReleased(true);
-      generateProblem();
+      fetchNewProblem();
     } else {
       setFeedback(res.message || "ERROR");
-      setStreak(0); // Reset streak on fail
+      setStreak(0);
     }
   }
 
@@ -79,7 +73,9 @@ export default function BackRoomPage() {
     );
   }
 
-  // Calculate progress percent (Target is $50)
+  // Calculate remaining work
+  const wage = 5 + Math.min(streak, 10);
+  const remaining = Math.max(0, Math.ceil((50 - balance) / wage));
   const progressPercent = Math.min(100, Math.max(0, (balance / 50) * 100));
 
   return (
@@ -103,16 +99,17 @@ export default function BackRoomPage() {
         </div>
 
         <div className="flex justify-between items-center mb-6 relative z-10">
-           <div className="text-gray-400 text-sm">CURRENT FUNDS</div>
-           <div className="text-3xl font-bold text-red-500 font-mono">${balance}</div>
+            <div className="text-gray-400 text-sm">CURRENT FUNDS</div>
+            <div className="text-3xl font-bold text-red-500 font-mono">${balance}</div>
         </div>
 
         <div className="bg-gray-900 p-6 border-2 border-gray-700 mb-6 text-center relative z-10">
-           <div className="flex justify-between items-center mb-4">
-               <div className="text-gray-500 text-xs">TASK: SOLVE</div>
-               <div className="text-xs font-bold text-yellow-400">COMBO: x{streak + 1}</div>
-           </div>
-           <div className="text-4xl font-bold">{problem.q} = ?</div>
+            <div className="flex justify-between items-center mb-4">
+                <div className="text-gray-500 text-xs">TASK: SOLVE</div>
+                <div className="text-xs font-bold text-yellow-400">COMBO: x{streak + 1}</div>
+            </div>
+            <div className="text-4xl font-bold">{problem.q} = ?</div>
+            <div className="text-[10px] text-gray-500 mt-2">Est. Remaining Tasks: {remaining}</div>
         </div>
 
         <form onSubmit={handleSubmit} className="flex gap-4 relative z-10">
