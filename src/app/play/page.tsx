@@ -67,9 +67,11 @@ export default function PlayPage() {
   const [fetchingDeck, setFetchingDeck] = useState(false);
   const [isBankrupt, setIsBankrupt] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Tutorial State
   const [showTutorial, setShowTutorial] = useState(false);
 
-  // Derived Values
+  // Calculate Wager & Profit Potential
   const currentWagerAmount = wagerMode === 'percent'
     ? Math.max(1, Math.floor(balance * (wagerPercent / 100)))
     : Math.min(balance, Math.max(1, parseInt(customAmount) || 0));
@@ -78,11 +80,11 @@ export default function PlayPage() {
   const estMultiplier = 1.2 + (riskRatio * 0.8);
   const potentialProfit = Math.floor(currentWagerAmount * (estMultiplier - 1));
 
-  // Initial Load
+  // Initial Load & Tutorial Check
   useEffect(() => {
     const init = async () => {
-      const hasSeen = localStorage.getItem('reality_wager_tutorial');
-      if (!hasSeen) setShowTutorial(true);
+      const hasSeenTutorial = localStorage.getItem('reality_wager_tutorial');
+      if (!hasSeenTutorial) setShowTutorial(true);
 
       const supabase = createClient();
       let { data: { user } } = await supabase.auth.getUser();
@@ -101,39 +103,41 @@ export default function PlayPage() {
     setShowTutorial(false);
   }
 
-  // Preloading
+  // AGGRESSIVE PRELOADING LOGIC
   useEffect(() => {
     if (deck.length > 1) {
-      deck.slice(1, 4).forEach((img) => {
+      deck.slice(1, 6).forEach((img) => {
         const i = new Image();
         i.src = img.url;
-        i.decoding = 'async'; // FIX: Avoid main thread blocking
       });
     }
   }, [deck]);
 
+  // Deck Management
   async function fetchMoreCards(isInitial = false, forceCategory?: ImageCategory) {
     if (fetchingDeck) return;
     setFetchingDeck(true);
     try {
       const targetCategory = forceCategory || category;
       const { images } = await getHandBatch(15, targetCategory);
+
       setDeck(prev => {
         const currentIds = new Set(prev.map(i => i.id));
         let newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
-        if (newUnique.length < 3 && images.length > 0) { // Fallback if ran out
+        if (newUnique.length < 3 && images.length > 0) {
              setHistory([]);
              newUnique = images.filter(img => !currentIds.has(img.id));
         }
         return [...prev, ...newUnique];
       });
     } catch (e) {
-      console.error(e);
+      console.error("Deck Fetch Error", e);
     } finally {
       setFetchingDeck(false);
     }
   }
 
+  // Handle Category Change
   const handleCategoryChange = (newCat: string) => {
     const cat = newCat as ImageCategory;
     if (cat === category) return;
@@ -144,9 +148,11 @@ export default function PlayPage() {
     fetchMoreCards(false, cat);
   };
 
-  // Infinite Scroll
+  // Infinite Scroll Trigger
   useEffect(() => {
-    if (deck.length < 5 && !fetchingDeck) fetchMoreCards();
+    if (deck.length < 8 && !fetchingDeck) {
+      fetchMoreCards();
+    }
   }, [deck.length, fetchingDeck]);
 
   const nextCard = () => {
@@ -155,7 +161,10 @@ export default function PlayPage() {
     setDeck(prev => {
       const finishedCard = prev[0];
       if (finishedCard) {
-        setHistory(h => [...h, finishedCard.id].slice(-50));
+        setHistory(h => {
+             const newHist = [...h, finishedCard.id];
+             return newHist.slice(-50);
+        });
       }
       return prev.slice(1);
     });
@@ -171,11 +180,8 @@ export default function PlayPage() {
   }
 
   const handleWager = async (guess: 'real' | 'ai') => {
-    if (!deck[0] || loadingResult) return;
-    if (currentWagerAmount > balance) {
-        setErrorMsg("FUNDS LOW");
-        return;
-    }
+    if (!deck[0]) return;
+    if (currentWagerAmount > balance || loadingResult) return;
     if (currentWagerAmount <= 0) {
       setErrorMsg("INVALID WAGER");
       return;
@@ -205,7 +211,7 @@ export default function PlayPage() {
         if (res.new_balance < 10) setIsBankrupt(true);
       }
     } catch (e) {
-      setErrorMsg("Connection Lost");
+      setErrorMsg("Network Failure");
     } finally {
       setLoadingResult(false);
     }
@@ -240,94 +246,170 @@ export default function PlayPage() {
     <div className="min-h-screen p-4 md:p-8 flex flex-col font-mono text-white max-w-6xl mx-auto">
       {showTutorial && <ProtocolBriefing onClose={closeTutorial} />}
 
-      {/* HEADER */}
-      <div className="flex justify-between items-end border-b border-protocol-gray pb-4 mb-4">
+      <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0 }}>
+        {deck.slice(1, 6).map(img => <img key={img.id} src={img.url} alt="preload" decoding="sync" />)}
+      </div>
+
+      {/* DESKTOP HEADER */}
+      <div className="flex justify-between items-end border-b border-protocol-gray pb-4 mb-6">
         <div className="flex items-end gap-4">
            <div>
-             <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Funds</div>
-             <div className="text-2xl md:text-3xl font-bold tracking-tighter">${balance.toLocaleString()}</div>
+             <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">Operator Funds</div>
+             <div className="text-3xl font-bold tracking-tighter">${balance.toLocaleString()}</div>
            </div>
-           <button onClick={() => setShowTutorial(true)} className="mb-1 text-[10px] text-protocol-signal border border-protocol-signal px-2 py-1 hover:bg-protocol-signal hover:text-black">
-             [?] HELP
+
+           {/* REOPEN INSTRUCTIONS BUTTON */}
+           <button
+             onClick={() => setShowTutorial(true)}
+             className="mb-1 text-xs text-protocol-signal border border-protocol-signal px-2 py-1 hover:bg-protocol-signal hover:text-black transition-colors"
+           >
+             [ ? ] HELP
            </button>
         </div>
-        <div className="text-right">
-           <div className="text-[10px] text-gray-500 uppercase">Streak</div>
-           <div className="text-xl font-bold text-protocol-signal">{streak}</div>
+
+        <div className="flex gap-4">
+           <div className="text-right">
+              <div className="text-xs text-gray-500 uppercase">Streak</div>
+              <div className="text-xl font-bold text-protocol-signal">{streak}</div>
+           </div>
+           <div className="text-right">
+              <div className="text-xs text-gray-500 uppercase">Latency</div>
+              <div className="text-xl font-bold text-gray-600">12ms</div>
+           </div>
         </div>
       </div>
 
-      {/* GAME GRID */}
-      <div className="grow grid grid-cols-1 md:grid-cols-[1fr_350px] gap-6">
+      {/* RESPONSIVE LAYOUT GRID */}
+      <div className="grow grid grid-cols-1 md:grid-cols-[1fr_350px] gap-6 md:gap-12">
 
-        {/* IMAGE AREA */}
+        {/* LEFT COL: IMAGE */}
         <div className="relative flex flex-col justify-center">
           <div className="relative aspect-[4/3] md:aspect-auto md:h-[600px] w-full">
-            <GameCard key={currentImage.id} src={currentImage.url} onSkip={nextCard} />
-            {result && <div className="absolute inset-0 z-30"><ResultOverlay result={result} onNext={nextCard} /></div>}
+            <GameCard
+                key={currentImage.id}
+                src={currentImage.url}
+                onSkip={nextCard}
+            />
+            {result && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200 border border-white/20">
+                <div className="w-full text-center py-8">
+                  <div className="text-6xl font-black mb-4 uppercase tracking-tighter italic">
+                    {result.isCorrect ? <span className="text-protocol-signal">VERIFIED</span> : <span className="text-protocol-noise">ERROR</span>}
+                  </div>
+                  <div className="text-3xl font-mono mb-2 text-white">
+                    {result.profit > 0 ? '+' : ''}{result.profit} CREDITS
+                  </div>
+                  <div className="text-[10px] text-gray-500 mb-8 uppercase tracking-widest">
+                    Source: {result.source}
+                  </div>
+                  <button onClick={nextCard} className="protocol-btn px-8 py-4 font-bold mx-auto border-white text-white hover:bg-white hover:text-black">
+                    [ NEXT SUBJECT ]
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* CONTROLS (Responsive) */}
+        {/* RIGHT COL: CONTROL PANEL */}
         {!result && (
-          <div className="flex flex-col space-y-4">
+          <div className="flex flex-col justify-center space-y-6">
 
-            {/* Toggle Wager Panel on Mobile */}
-            <button
-                onClick={() => setShowWagerPanel(!showWagerPanel)}
-                className="md:hidden w-full py-2 bg-gray-900 border border-gray-700 text-xs text-gray-400 uppercase tracking-widest"
-            >
-                {showWagerPanel ? 'Hide Settings' : 'Adjust Settings / Frequency'}
-            </button>
-
-            {/* CONTROL PANEL (Hidden on mobile unless toggled) */}
-            <div className={`${showWagerPanel ? 'block' : 'hidden'} md:block space-y-4`}>
-                {/* Frequency */}
-                <div className="bg-protocol-dark border border-protocol-gray p-3">
-                    <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Frequency</div>
-                    <div className="grid grid-cols-4 gap-1">
-                        {['general', 'faces', 'places', 'art'].map((cat) => (
-                        <button key={cat} onClick={() => handleCategoryChange(cat)} className={`text-[9px] uppercase py-2 border ${category === cat ? 'bg-white text-black' : 'text-gray-500 border-gray-800'}`}>{cat}</button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Wager Settings */}
-                <div className="bg-protocol-dark border border-protocol-gray p-3">
-                    <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] text-gray-500 uppercase">Wager</span>
-                        <div className="flex space-x-2">
-                            <button onClick={() => setWagerMode('percent')} className={`text-[10px] ${wagerMode === 'percent' ? 'text-white' : 'text-gray-600'}`}>%</button>
-                            <button onClick={() => setWagerMode('custom')} className={`text-[10px] ${wagerMode === 'custom' ? 'text-white' : 'text-gray-600'}`}>$</button>
-                        </div>
-                    </div>
-
-                    {wagerMode === 'percent' ? (
-                        <div className="grid grid-cols-4 gap-1 mb-3">
-                        {[10, 25, 50, 100].map((pct) => (
-                            <button key={pct} onClick={() => setWagerPercent(pct)} className={`py-2 text-[10px] font-bold border ${wagerPercent === pct ? 'bg-white text-black' : 'border-gray-700 text-gray-500'}`}>{pct}%</button>
-                        ))}
-                        </div>
-                    ) : (
-                        <input type="number" value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} placeholder="Amount" className="w-full bg-black border border-gray-600 p-2 text-white font-mono mb-3" />
-                    )}
-
-                    <div className="flex justify-between text-[10px] border-t border-gray-800 pt-2">
-                        <span className="text-gray-500">Risk: ${currentWagerAmount}</span>
-                        <span className="text-protocol-signal">Potential: +${potentialProfit}</span>
-                    </div>
-                    <div className="text-[9px] text-gray-600 mt-1 text-right italic">
-                       (Multiplier scales with risk %)
-                    </div>
-                </div>
+            {/* Signal Frequency Selector */}
+            <div className="bg-protocol-dark border border-protocol-gray p-4">
+              <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Signal Frequency</div>
+              <div className="grid grid-cols-4 gap-2">
+                {['general', 'faces', 'places', 'art'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => handleCategoryChange(cat)}
+                    className={`text-[10px] uppercase py-2 border transition-colors ${
+                      category === cat
+                      ? 'bg-protocol-white text-black border-white'
+                      : 'text-gray-500 border-gray-800 hover:border-gray-500'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {errorMsg && <div className="text-center text-[10px] text-protocol-noise border border-protocol-noise p-2">{errorMsg}</div>}
+            {/* Wager Controls */}
+            <div className="bg-protocol-dark border border-protocol-gray p-4">
+               <div className="flex justify-between items-center mb-4">
+                 <span className="text-[10px] text-gray-500 uppercase tracking-widest">Wager Input</span>
+                 <div className="flex space-x-2">
+                    <button
+                      onClick={() => setWagerMode('percent')}
+                      className={`text-[10px] uppercase ${wagerMode === 'percent' ? 'text-white underline' : 'text-gray-600'}`}
+                    >Percent</button>
+                    <button
+                      onClick={() => setWagerMode('custom')}
+                      className={`text-[10px] uppercase ${wagerMode === 'custom' ? 'text-white underline' : 'text-gray-600'}`}
+                    >Custom</button>
+                 </div>
+               </div>
 
-            {/* ACTION BUTTONS (Always Visible) */}
-            <div className="grid grid-cols-2 gap-4 mt-auto">
-              <button onClick={() => handleWager('real')} disabled={loadingResult} className="h-20 md:h-24 bg-transparent text-white font-bold text-xl border border-gray-600 hover:bg-white hover:text-black transition-all">REAL</button>
-              <button onClick={() => handleWager('ai')} disabled={loadingResult} className="h-20 md:h-24 bg-transparent text-white font-bold text-xl border border-gray-600 hover:bg-protocol-noise hover:text-white transition-all">AI</button>
+               {wagerMode === 'percent' ? (
+                 <div className="grid grid-cols-4 gap-2 mb-4">
+                   {[10, 25, 50, 100].map((pct) => (
+                      <button
+                          key={pct}
+                          onClick={() => setWagerPercent(pct)}
+                          className={`py-2 text-xs font-bold border transition-all ${wagerPercent === pct ? 'bg-white text-black border-white' : 'bg-transparent text-gray-500 border-gray-700 hover:border-gray-500'}`}
+                      >
+                          {pct}%
+                      </button>
+                   ))}
+                 </div>
+               ) : (
+                  <div className="mb-4 relative">
+                    <span className="absolute left-3 top-2 text-gray-500">$</span>
+                    <input
+                      type="number"
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      placeholder="Enter Amount"
+                      className="w-full bg-black border border-gray-600 p-2 pl-6 text-white font-mono focus:border-protocol-signal focus:outline-none"
+                    />
+                  </div>
+               )}
+
+               <div className="border-t border-gray-800 pt-3">
+                 <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500">Total Wager:</span>
+                    <span className="text-white font-bold">${currentWagerAmount}</span>
+                 </div>
+                 <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Potential Return:</span>
+                    <span className="text-protocol-signal font-bold">+${potentialProfit}</span>
+                 </div>
+               </div>
+            </div>
+
+            {errorMsg && (
+               <div className="text-center text-[10px] text-protocol-noise border border-protocol-noise p-2 uppercase tracking-widest animate-pulse">
+                  ⚠ {errorMsg}
+               </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                  onClick={() => handleWager('real')}
+                  disabled={loadingResult}
+                  className="h-24 bg-transparent text-white font-bold text-2xl border border-gray-600 hover:bg-white hover:text-black hover:border-white transition-all uppercase tracking-widest disabled:opacity-50"
+              >
+                  REAL
+              </button>
+              <button
+                  onClick={() => handleWager('ai')}
+                  disabled={loadingResult}
+                  className="h-24 bg-transparent text-white font-bold text-2xl border border-gray-600 hover:bg-protocol-noise hover:text-white hover:border-protocol-noise transition-all uppercase tracking-widest disabled:opacity-50"
+              >
+                  AI
+              </button>
             </div>
           </div>
         )}
