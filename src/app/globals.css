@@ -3,38 +3,33 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
+  --comic-bg: #fffbeb;    /* Cream/Paper */
+  --comic-black: #050505; /* Ink Black */
+  --comic-red: #ff003c;   /* Action Red */
+  --comic-blue: #00f3ff;  /* Cyan/Print Blue */
+  --comic-yellow: #ffee00;/* Warning Yellow */
 }
 
 body {
-  /* Pale Yellow/Cream Background for that 'comic book' page feel */
-  background-color: #fffbeb;
-  color: #000000;
-  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--comic-bg);
+  color: var(--comic-black);
+  font-family: 'Courier New', Courier, monospace; /* Typewriter style */
 }
 
-/* Custom "Chunky" Slider Styling */
-input[type=range] {
-  -webkit-appearance: none;
-  background: transparent;
+/* Comic Book Utilities */
+.comic-box {
+  background-color: white;
+  border: 4px solid var(--comic-black);
+  box-shadow: 6px 6px 0px 0px var(--comic-black);
 }
 
-input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  height: 24px;
-  width: 24px;
-  border-radius: 50%;
-  background: #ffffff;
-  border: 4px solid #000000;
-  cursor: pointer;
-  margin-top: -8px; /* Offset for track */
-  box-shadow: 2px 2px 0px 0px #000000;
+.comic-button {
+  transition: all 0.1s;
+  border: 3px solid var(--comic-black);
+  box-shadow: 4px 4px 0px 0px var(--comic-black);
 }
 
-input[type=range]::-webkit-slider-runnable-track {
-  width: 100%;
-  height: 8px;
-  cursor: pointer;
-  background: #000000;
-  border-radius: 999px;
+.comic-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0px 0px var(--comic-black);
 }

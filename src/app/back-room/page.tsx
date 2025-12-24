@@ -1,143 +1,117 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getNextHand, submitWager } from '@/app/actions';
 import { createClient } from '@/lib/supabase/client';
-import GameCard from '@/components/GameCard';
-import ResultOverlay from '@/components/ResultOverlay';
+import { submitManualLabor } from '@/app/actions';
 
-export default function PlayPage() {
+export default function BackRoomPage() {
   const router = useRouter();
-  const [balance, setBalance] = useState<number>(1000);
-  const [image, setImage] = useState<any>(null);
-  const [result, setResult] = useState<any>(null);
-  const [loadingMsg, setLoadingMsg] = useState("Booting...");
-
-  // NEW: Wager State
-  const [wager, setWager] = useState<number>(50);
+  const [balance, setBalance] = useState(0);
+  const [problem, setProblem] = useState({ q: "Initializing...", a: 0 });
+  const [userAnswer, setUserAnswer] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [released, setReleased] = useState(false);
 
   useEffect(() => {
-    const init = async () => {
-      const supabase = createClient();
-      let { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoadingMsg("Creating Anonymous ID...");
-        const { data } = await supabase.auth.signInAnonymously();
-        user = data.user;
-      }
-
-      setLoadingMsg("Syncing Database...");
-      await Promise.all([ loadHand(), loadBalance(user?.id) ]);
-      setLoadingMsg("Ready");
-    };
-    init();
+    loadBalance();
+    generateProblem();
   }, []);
 
-  async function loadBalance(userId: string | undefined) {
-    if (!userId) return;
+  async function loadBalance() {
     const supabase = createClient();
-    const { data } = await supabase.from('profiles').select('current_balance').eq('id', userId).single();
-    if (data) setBalance(data.current_balance);
-  }
-
-  async function loadHand() {
-    setResult(null);
-    try {
-      const { image } = await getNextHand();
-      if (image) setImage(image);
-    } catch (e) {
-      setImage({ url: '/assets/game/1.jpg', id: 0, type: 'real' });
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase.from('profiles').select('current_balance').eq('id', user.id).single();
+      if (data) {
+        setBalance(data.current_balance);
+        if (data.current_balance >= 50) setReleased(true);
+      }
     }
   }
 
-  const handleWager = async (guess: 'real' | 'ai') => {
-    if (wager > balance) { alert("Insufficient Funds"); return; }
+  function generateProblem() {
+    // Generate simple arithmetic
+    const a = Math.floor(Math.random() * 20) + 10;
+    const b = Math.floor(Math.random() * 20) + 1;
+    const op = Math.random() > 0.5 ? '+' : '-';
+    const q = `${a} ${op} ${b}`;
+    const ans = op === '+' ? a + b : a - b;
+    setProblem({ q, a: ans });
+    setUserAnswer("");
+  }
 
-    const res = await submitWager(image.id, wager, guess);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const val = parseInt(userAnswer);
+    if (isNaN(val)) return;
 
-    if (res?.error === 'BANKRUPT') { router.push('/back-room'); return; }
-    if (res?.new_balance !== undefined) {
-      setBalance(res.new_balance);
-      setResult(res);
-      // Reset wager to safe amount if balance dropped
-      if (wager > res.new_balance) setWager(Math.floor(res.new_balance / 2));
+    // Call Server Action
+    const res = await submitManualLabor(val, problem.a, 1); // 1 = Difficulty
+
+    if (res.success) {
+      setBalance(res.new_balance || balance);
+      setFeedback(`EARNED $${res.wage}`);
+      if (res.released) setReleased(true);
+      generateProblem();
+    } else {
+      setFeedback(res.message || "ERROR");
     }
-  };
+  }
 
-  // Calculate dynamic multiplier for UI display
-  const riskRatio = balance > 0 ? (wager / balance) : 0;
-  const multiplier = (1.2 + (riskRatio * 0.8)).toFixed(2);
-  const potentialWin = Math.floor(wager * (parseFloat(multiplier) - 1));
-
-  if (!image) {
+  if (released) {
     return (
-      <div className="min-h-screen bg-cyber-black flex flex-col items-center justify-center font-mono text-neon-green">
-        <div className="animate-pulse mb-4">CONNECTING TO MAINFRAME...</div>
-        <div className="text-xs text-gray-500">Status: {loadingMsg}</div>
+      <div className="min-h-screen bg-white text-black flex flex-col items-center justify-center p-8 border-8 border-black font-mono">
+        <h1 className="text-4xl font-bold mb-6">DEBT CLEARED</h1>
+        <p className="mb-8">YOU ARE FREE TO WAGER AGAIN.</p>
+        <button
+          onClick={() => router.push('/play')}
+          className="text-2xl px-8 py-4 bg-green-400 text-black border-4 border-black font-bold hover:translate-x-1 hover:translate-y-1 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]"
+        >
+          RETURN TO CASINO
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-4 max-w-lg mx-auto flex flex-col justify-center">
-      {/* HUD */}
-      <div className="flex justify-between items-end border-b border-cyber-border pb-4 mb-6">
-        <div>
-          <div className="text-xs text-gray-500 uppercase tracking-widest">Balance</div>
-          <div className="text-3xl font-mono text-neon-green">${balance}</div>
+    <div className="min-h-screen bg-[#333] text-white flex flex-col items-center justify-center p-4 font-mono">
+      <div className="w-full max-w-md bg-black border-4 border-gray-600 p-8 shadow-2xl">
+        <div className="mb-8 text-center border-b border-gray-600 pb-4">
+          <h1 className="text-red-500 font-bold tracking-widest text-xl mb-2">THE BACK ROOM</h1>
+          <p className="text-gray-400 text-xs">WORK OFF YOUR DEBT. TARGET: $50</p>
         </div>
-        <div className="text-right">
-            <div className="text-xs text-gray-500">POTENTIAL PROFIT</div>
-            <div className="text-xl font-mono text-neon-blue">+${potentialWin} <span className="text-xs text-gray-400">({multiplier}x)</span></div>
+
+        <div className="flex justify-between items-center mb-12">
+           <div className="text-gray-400 text-sm">CURRENT FUNDS</div>
+           <div className="text-3xl font-bold text-red-500 font-mono">${balance}</div>
+        </div>
+
+        <div className="bg-gray-900 p-6 border-2 border-gray-700 mb-6 text-center">
+           <div className="text-gray-500 text-xs mb-2">TASK: SOLVE</div>
+           <div className="text-4xl font-bold">{problem.q} = ?</div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex gap-4">
+          <input
+            type="number"
+            value={userAnswer}
+            onChange={(e) => setUserAnswer(e.target.value)}
+            className="w-full bg-black border-2 border-white p-4 text-xl text-center focus:outline-none focus:border-red-500"
+            placeholder="Answer"
+            autoFocus
+          />
+          <button
+            type="submit"
+            className="bg-white text-black font-bold px-6 border-2 border-gray-400 hover:bg-gray-200"
+          >
+            SUBMIT
+          </button>
+        </form>
+
+        <div className="h-8 mt-4 text-center text-green-400 font-bold animate-pulse">
+          {feedback}
         </div>
       </div>
-
-      <div className="relative">
-        <GameCard src={image.url} />
-        {result && (
-          <div className="absolute inset-0 flex items-center justify-center z-20">
-            <ResultOverlay result={result} onNext={loadHand} />
-          </div>
-        )}
-      </div>
-
-      {!result && (
-        <div className="space-y-6 mt-4">
-          {/* SLIDER CONTROLS */}
-          <div className="bg-cyber-gray p-4 rounded border border-cyber-border">
-            <div className="flex justify-between text-xs mb-2 text-gray-400 font-mono">
-                <span>WAGER: ${wager}</span>
-                <span>{Math.floor(riskRatio * 100)}% RISK</span>
-            </div>
-
-            <input
-                type="range"
-                min="1"
-                max={balance}
-                value={wager}
-                onChange={(e) => setWager(parseInt(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-neon-green"
-            />
-
-            <div className="flex justify-between mt-3 gap-2">
-                <button onClick={() => setWager(Math.floor(balance * 0.1))} className="text-[10px] bg-black border border-gray-700 px-2 py-1 text-gray-400 hover:text-white">10%</button>
-                <button onClick={() => setWager(Math.floor(balance * 0.25))} className="text-[10px] bg-black border border-gray-700 px-2 py-1 text-gray-400 hover:text-white">25%</button>
-                <button onClick={() => setWager(Math.floor(balance * 0.5))} className="text-[10px] bg-black border border-gray-700 px-2 py-1 text-gray-400 hover:text-white">50%</button>
-                <button onClick={() => setWager(balance)} className="text-[10px] bg-red-900/30 border border-red-900 px-2 py-1 text-red-500 hover:bg-red-900 hover:text-white font-bold">ALL IN</button>
-            </div>
-          </div>
-
-          {/* BET BUTTONS */}
-          <div className="grid grid-cols-2 gap-4">
-            <button onClick={() => handleWager('real')} className="bg-green-900/20 border border-green-600 text-green-500 py-4 font-bold text-xl hover:bg-green-500 hover:text-black transition-all hover:scale-[1.02]">
-                REAL
-            </button>
-            <button onClick={() => handleWager('ai')} className="bg-red-900/20 border border-red-600 text-red-500 py-4 font-bold text-xl hover:bg-red-500 hover:text-black transition-all hover:scale-[1.02]">
-                AI
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
