@@ -34,7 +34,7 @@ function ProtocolBriefing({ onClose }: { onClose: () => void }) {
           <div>
             <strong className="text-white block mb-1">3. CONSEQUENCE</strong>
             <p className="text-xs text-gray-400">
-              Drop below $10 -> Forced manual labor.
+              Drop below $10 &rarr; Forced manual labor.
             </p>
           </div>
         </div>
