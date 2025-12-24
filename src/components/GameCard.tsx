@@ -9,10 +9,12 @@ type GameCardProps = {
 
 export default function GameCard({ src, onSkip }: GameCardProps) {
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Reset error when src changes
+  // Reset state when the image source changes (new round)
   useEffect(() => {
     setError(false);
+    setLoading(true);
   }, [src]);
 
   if (error) {
@@ -36,12 +38,30 @@ export default function GameCard({ src, onSkip }: GameCardProps) {
 
   return (
     <div className="relative w-full aspect-[4/3] bg-white border-4 border-black rounded-xl overflow-hidden shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+      {/* 1. Loading Overlay */}
+      {loading && (
+        <div className="absolute inset-0 z-10 bg-gray-100 flex flex-col items-center justify-center font-mono">
+            <div className="w-12 h-12 border-4 border-black border-t-neon-green rounded-full animate-spin mb-4"></div>
+            <div className="text-sm font-bold animate-pulse">SCANNING SUBJECT...</div>
+        </div>
+      )}
+
+      {/* 2. Image */}
       <img
         src={src}
         alt="Subject"
-        className="w-full h-full object-cover"
-        onError={() => setError(true)}
+        className={`w-full h-full object-cover transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
+        onLoad={() => setLoading(false)}
+        onError={() => {
+            setLoading(false);
+            setError(true);
+        }}
       />
+
+      {/* 3. Scanline Effect (Visual Polish) */}
+      {!loading && !error && (
+        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-10 bg-[length:100%_4px,6px_100%]"></div>
+      )}
     </div>
   );
 }

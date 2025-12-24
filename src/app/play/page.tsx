@@ -14,8 +14,8 @@ export default function PlayPage() {
 
   const [result, setResult] = useState<any>(null);
 
-  // WAGER LOGIC REFACTOR: Store percentage, calculate amount
-  const [wagerPercent, setWagerPercent] = useState<number>(10); // Default 10%
+  // WAGER LOGIC: Percentage based
+  const [wagerPercent, setWagerPercent] = useState<number>(10);
 
   // Loading States
   const [loadingResult, setLoadingResult] = useState(false);
@@ -24,7 +24,7 @@ export default function PlayPage() {
   const [isBankrupt, setIsBankrupt] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Derived Wager Amount (Always valid based on current balance)
+  // Derived Wager Amount
   const currentWagerAmount = Math.max(1, Math.floor(balance * (wagerPercent / 100)));
 
   useEffect(() => {
@@ -45,12 +45,25 @@ export default function PlayPage() {
     if (fetchingDeck) return;
     setFetchingDeck(true);
     try {
-      const { images } = await getHandBatch(8);
+      // 1. Fetch a larger batch (12 items)
+      const { images } = await getHandBatch(12);
+
       setDeck(prev => {
         const currentIds = new Set(prev.map(i => i.id));
-        const newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
+        // Filter: Must not be in current deck AND must not be in recent history
+        let newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
+
+        // 2. INFINITE STREAM FIX: If we ran out of unique images, reset history and recycle
+        if (newUnique.length < 3 && images.length > 0) {
+             console.log("Stream dry. Recycling database...");
+             setHistory([]); // Clear history
+             // Just ensure we don't have duplicates in the *current* hand
+             newUnique = images.filter(img => !currentIds.has(img.id));
+        }
+
         return [...prev, ...newUnique];
       });
+
     } catch (e) {
       console.error("Deck Fetch Error", e);
     } finally {
@@ -64,14 +77,21 @@ export default function PlayPage() {
     setDeck(prev => {
       const finishedCard = prev[0];
       if (finishedCard) {
-        setHistory(h => [...h.slice(-20), finishedCard.id]);
+        // Add to history to avoid seeing it again too soon
+        setHistory(h => {
+             const newHist = [...h, finishedCard.id];
+             // Keep history size manageable (e.g., remember last 50 cards)
+             if (newHist.length > 50) return newHist.slice(newHist.length - 50);
+             return newHist;
+        });
       }
       return prev.slice(1);
     });
   };
 
+  // 3. AGGRESSIVE REFILL: If we have fewer than 10 cards, fetch more immediately
   useEffect(() => {
-    if (deck.length < 4 && !fetchingDeck) {
+    if (deck.length < 10 && !fetchingDeck) {
       fetchMoreCards();
     }
   }, [deck.length, fetchingDeck]);
@@ -96,7 +116,6 @@ export default function PlayPage() {
 
     try {
       const currentImage = deck[0];
-      // Send the CALCULATED dollar amount, not the percentage
       const res = await submitWager(currentImage.id, currentWagerAmount, guess);
 
       if (res?.error === 'BANKRUPT') {
@@ -121,9 +140,6 @@ export default function PlayPage() {
         setBalance(res.new_balance);
         setResult(res);
         if (res.new_balance < 10) setIsBankrupt(true);
-
-        // Note: We don't need to reset 'wager' because it is a percentage.
-        // If I bet 50% and lose, it stays at 50% of the NEW (lower) balance.
       }
     } catch (e) {
       setErrorMsg("Connection Error");
@@ -132,7 +148,6 @@ export default function PlayPage() {
     }
   };
 
-  const riskRatio = balance > 0 ? (currentWagerAmount / balance) : 0;
   const currentImage = deck[0];
 
   if (isBankrupt) {
@@ -146,18 +161,25 @@ export default function PlayPage() {
     )
   }
 
-  if (!currentImage) return <div className="min-h-screen flex items-center justify-center font-bold text-2xl animate-pulse">ESTABLISHING UPLINK...</div>;
+  // Initial Loading State
+  if (!currentImage) return (
+      <div className="min-h-screen flex flex-col items-center justify-center font-mono">
+          <div className="text-2xl font-bold animate-pulse text-neon-green mb-2">ESTABLISHING UPLINK...</div>
+          <div className="text-xs text-gray-500">DECRYPTING IMAGE STREAM</div>
+      </div>
+  );
 
   return (
     <div className="min-h-screen max-w-md mx-auto p-6 flex flex-col font-mono text-black">
 
+      {/* 4. PRELOADER: Hidden images for the next 5 items */}
       <div className="hidden">
-        {deck.slice(1, 4).map(img => <img key={img.id} src={img.url} alt="preload" />)}
+        {deck.slice(1, 6).map(img => <img key={img.id} src={img.url} alt="preload" />)}
       </div>
 
       {/* HEADER */}
       <div className="comic-box p-4 mb-8 flex justify-between items-start bg-white relative">
-        <div className={`absolute -top-3 -right-3 text-[10px] font-bold px-2 py-1 border-2 border-black bg-green-400`}>
+        <div className={`absolute -top-3 -right-3 text-[10px] font-bold px-2 py-1 border-2 border-black bg-green-400 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`}>
             ● LIVE SIGNAL
         </div>
         <div>
@@ -180,7 +202,7 @@ export default function PlayPage() {
 
         {/* OVERLAY */}
         {result && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-white/95 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-white/95 backdrop-blur-sm animate-in fade-in duration-200 rounded-xl">
             <div className="comic-box p-6 w-full text-center shadow-2xl">
               <div className="text-6xl font-black mb-2 uppercase italic transform -rotate-3 drop-shadow-md">
                 {result.isCorrect ? <span className="text-green-600">YES!</span> : <span className="text-red-600">NO!</span>}
@@ -211,7 +233,6 @@ export default function PlayPage() {
                <span>MAX: ${balance}</span>
              </div>
 
-             {/* Slider now controls PERCENTAGE (1-100) */}
              <input
                 type="range"
                 min="1"
