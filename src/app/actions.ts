@@ -2,13 +2,19 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
-// 1. Define the specific return type to satisfy TypeScript
+// 0. SHARED BACKUP DATA (Source of truth if DB fails)
+const BACKUP_IMAGES = [
+  { id: 999, url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2', type: 'real', source: 'Unsplash' },
+  { id: 998, url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe', type: 'ai', source: 'DeepMind' },
+  { id: 997, url: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126', type: 'real', source: 'Unsplash' }
+];
+
 type WagerResult = {
   new_balance?: number;
   isCorrect?: boolean;
   profit?: number;
   source?: string;
-  error?: string; // This tells TS that checking .error is valid
+  error?: string;
 }
 
 async function createClient() {
@@ -30,22 +36,16 @@ export async function getNextHand() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Try to get a random image from the DB
+  // 1. Try DB
   const { data, error } = await supabase.rpc('get_next_hand', { p_user_id: user?.id })
 
   if (error || !data) {
-     // FALLBACK: If DB is empty/broken, use these 3 hardcoded images so the game works
-     const backups = [
-       { url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2', type: 'real' },
-       { url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe', type: 'ai' },
-       { url: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126', type: 'real' }
-     ];
-     const random = backups[Math.floor(Math.random() * backups.length)];
-
+     // 2. Fallback to constant list if DB fails
+     const random = BACKUP_IMAGES[Math.floor(Math.random() * BACKUP_IMAGES.length)];
      return {
        image: {
          url: random.url,
-         id: 999,
+         id: random.id,
          type: random.type,
          source: 'Backup System'
        }
@@ -54,48 +54,68 @@ export async function getNextHand() {
   return { image: data }
 }
 
-// 2. Add the return type annotation: Promise<WagerResult>
 export async function submitWager(imageId: number, wagerAmount: number, guess: 'real' | 'ai'): Promise<WagerResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // 1. OFFLINE MODE: If Auth fails, just play the game in memory
-  if (!user) {
-    return { new_balance: 1000 + wagerAmount, isCorrect: true, profit: wagerAmount, source: "Offline" }
+  // --- STEP 1: GET THE TRUTH (From DB or Backup) ---
+  let imageType = 'real';
+  let imageSource = 'Unknown';
+
+  // Try fetching the specific image from DB
+  const { data: dbImage } = await supabase.from('images').select('*').eq('id', imageId).single();
+
+  if (dbImage) {
+    imageType = dbImage.type;
+    imageSource = dbImage.source;
+  } else {
+    // If not in DB, check our hardcoded backups (for ID 999, etc)
+    const backup = BACKUP_IMAGES.find(img => img.id === imageId);
+    if (backup) {
+      imageType = backup.type;
+      imageSource = backup.source;
+    } else {
+      // If we can't find the image anywhere, we can't grade the test.
+      return { error: 'IMAGE_NOT_FOUND' };
+    }
   }
 
-  // 2. Fetch Data (Safely)
-  const { data: profile } = await supabase.from('profiles').select('current_balance').eq('id', user.id).single()
-  const { data: image } = await supabase.from('images').select('*').eq('id', imageId).single()
-
-  // Default to 1000 if profile missing, Default to 'real' if image missing
-  const currentBalance = profile ? profile.current_balance : 1000;
-
-  // 3. BANKRUPTCY CHECK
-  // If user has less than 10 credits, prevent play and return error
-  if (currentBalance < 10) {
-    return { error: 'BANKRUPT' };
+  // --- STEP 2: GET USER BALANCE ---
+  let currentBalance = 1000; // Default for visitors
+  if (user) {
+    const { data: profile } = await supabase.from('profiles').select('current_balance').eq('id', user.id).single();
+    if (profile) currentBalance = profile.current_balance;
   }
 
-  const imageType = image ? image.type : 'real';
-  const imageSource = image ? image.source : 'Unknown';
+  // --- STEP 3: CALCULATE RESULT ---
+  // Bankruptcy check
+  if (currentBalance < 10) return { error: 'BANKRUPT' };
 
-  // 4. Logic
+  // Core Logic
   const isCorrect = guess === imageType;
-  let newBalance = currentBalance;
   const riskRatio = currentBalance > 0 ? (wagerAmount / currentBalance) : 0;
+
+  // Calculate Profit/Loss
+  // Win: Multiply wager based on risk. Loss: Lose the wager amount.
   const multiplier = 1.2 + (riskRatio * 0.8);
-  const profit = isCorrect ? Math.floor(wagerAmount * (multiplier - 1)) : -wagerAmount;
+  const profit = isCorrect
+    ? Math.floor(wagerAmount * (multiplier - 1))
+    : -wagerAmount;
 
-  newBalance += profit;
+  const newBalance = currentBalance + profit;
 
-  // 5. Update Database (Background Task - Don't let errors stop the game)
-  const { error } = await supabase.rpc('update_balance', {
-    p_user_id: user.id,
-    p_new_balance: newBalance
-  })
+  // --- STEP 4: SAVE TO DB (If user exists) ---
+  if (user) {
+    await supabase.rpc('update_balance', {
+      p_user_id: user.id,
+      p_new_balance: newBalance
+    });
+  }
 
-  if (error) console.log("Background Save Error (Game Continuing):", error.message);
-
-  return { new_balance: newBalance, isCorrect, profit, source: imageSource }
+  return {
+    new_balance: newBalance,
+    isCorrect,
+    profit,
+    source: imageSource
+  }
 }
