@@ -14,7 +14,7 @@ export default function PlayPage() {
   const [isBankrupt, setIsBankrupt] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // NEW: DB Status Indicator
+  // DB Status Indicator
   const [dbStatus, setDbStatus] = useState<'LIVE' | 'OFFLINE'>('OFFLINE');
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function PlayPage() {
           return;
       }
 
-      // FIX: Handle Funds Mismatch gracefully
+      // Handle Funds Mismatch gracefully
       if (res?.error === 'INSUFFICIENT_FUNDS') {
         setErrorMsg("Funds mismatch! Resyncing...");
         if (res.server_balance !== undefined) {
@@ -146,7 +146,10 @@ export default function PlayPage() {
 
       {/* GAME AREA */}
       <div className="relative mb-8">
-        <GameCard src={image.url} />
+        <GameCard
+            src={image.url}
+            onSkip={loadHand} // <--- UPDATED: Passed loadHand function here
+        />
 
         {/* OVERLAY */}
         {result && (
