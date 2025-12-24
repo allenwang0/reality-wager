@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getHandBatch, submitWager, type GameImage } from '@/app/actions';
 import { createClient } from '@/lib/supabase/client';
@@ -10,17 +10,22 @@ export default function PlayPage() {
 
   // QUEUE SYSTEM
   const [deck, setDeck] = useState<GameImage[]>([]);
-  const [history, setHistory] = useState<string[]>([]); // To prevent immediate repeats
+  const [history, setHistory] = useState<string[]>([]);
 
   const [result, setResult] = useState<any>(null);
-  const [wager, setWager] = useState<number>(50);
+
+  // WAGER LOGIC REFACTOR: Store percentage, calculate amount
+  const [wagerPercent, setWagerPercent] = useState<number>(10); // Default 10%
 
   // Loading States
-  const [loadingResult, setLoadingResult] = useState(false); // Waiting for bet result
-  const [fetchingDeck, setFetchingDeck] = useState(false); // Waiting for new images
+  const [loadingResult, setLoadingResult] = useState(false);
+  const [fetchingDeck, setFetchingDeck] = useState(false);
 
   const [isBankrupt, setIsBankrupt] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Derived Wager Amount (Always valid based on current balance)
+  const currentWagerAmount = Math.max(1, Math.floor(balance * (wagerPercent / 100)));
 
   useEffect(() => {
     const init = async () => {
@@ -31,25 +36,21 @@ export default function PlayPage() {
         user = data.user;
       }
       await loadBalance(user?.id);
-      await fetchMoreCards(true); // Initial fetch
+      await fetchMoreCards(true);
     };
     init();
   }, []);
 
-  // --- QUEUE LOGIC ---
   async function fetchMoreCards(isInitial = false) {
     if (fetchingDeck) return;
     setFetchingDeck(true);
     try {
       const { images } = await getHandBatch(8);
-
       setDeck(prev => {
-        // Filter out images we've just seen or are already in the deck
         const currentIds = new Set(prev.map(i => i.id));
         const newUnique = images.filter(img => !currentIds.has(img.id) && !history.includes(img.id));
         return [...prev, ...newUnique];
       });
-
     } catch (e) {
       console.error("Deck Fetch Error", e);
     } finally {
@@ -57,22 +58,18 @@ export default function PlayPage() {
     }
   }
 
-  // Called when we finish a round
   const nextCard = () => {
     setResult(null);
     setErrorMsg(null);
-
     setDeck(prev => {
       const finishedCard = prev[0];
-      // Add to history to avoid repeat soon
       if (finishedCard) {
         setHistory(h => [...h.slice(-20), finishedCard.id]);
       }
-      return prev.slice(1); // Remove the first card
+      return prev.slice(1);
     });
   };
 
-  // Monitor deck size, refuel if low
   useEffect(() => {
     if (deck.length < 4 && !fetchingDeck) {
       fetchMoreCards();
@@ -92,27 +89,24 @@ export default function PlayPage() {
 
   const handleWager = async (guess: 'real' | 'ai') => {
     if (!deck[0]) return;
-    if (wager > balance || loadingResult) return;
+    if (currentWagerAmount > balance || loadingResult) return;
 
     setLoadingResult(true);
     setErrorMsg(null);
 
     try {
       const currentImage = deck[0];
-      const res = await submitWager(currentImage.id, wager, guess);
+      // Send the CALCULATED dollar amount, not the percentage
+      const res = await submitWager(currentImage.id, currentWagerAmount, guess);
 
-      // Handle Bankrupt
       if (res?.error === 'BANKRUPT') {
           setIsBankrupt(true);
           return;
       }
 
-      // 3. FIX: Handle Resync Silently
       if (res?.error === 'RESYNC_NEEDED' || res?.error === 'INSUFFICIENT_FUNDS') {
         if (res.server_balance !== undefined) {
             setBalance(res.server_balance);
-            // Auto-adjust wager
-            if (wager > res.server_balance) setWager(Math.floor(res.server_balance));
             setErrorMsg("Balance Synced. Try Again.");
         }
         return;
@@ -127,7 +121,9 @@ export default function PlayPage() {
         setBalance(res.new_balance);
         setResult(res);
         if (res.new_balance < 10) setIsBankrupt(true);
-        else if (wager > res.new_balance) setWager(Math.floor(res.new_balance / 2));
+
+        // Note: We don't need to reset 'wager' because it is a percentage.
+        // If I bet 50% and lose, it stays at 50% of the NEW (lower) balance.
       }
     } catch (e) {
       setErrorMsg("Connection Error");
@@ -136,7 +132,7 @@ export default function PlayPage() {
     }
   };
 
-  const riskRatio = balance > 0 ? (wager / balance) : 0;
+  const riskRatio = balance > 0 ? (currentWagerAmount / balance) : 0;
   const currentImage = deck[0];
 
   if (isBankrupt) {
@@ -155,7 +151,6 @@ export default function PlayPage() {
   return (
     <div className="min-h-screen max-w-md mx-auto p-6 flex flex-col font-mono text-black">
 
-      {/* 4. PRELOADER: Hidden images for the next 2 items in queue */}
       <div className="hidden">
         {deck.slice(1, 4).map(img => <img key={img.id} src={img.url} alt="preload" />)}
       </div>
@@ -170,14 +165,13 @@ export default function PlayPage() {
           <div className="text-4xl font-bold mt-1">${balance}</div>
         </div>
         <div className="text-right mt-2">
-          <span className="text-xs font-bold text-gray-500">QUEUE: {deck.length}</span>
-          <div className="text-2xl font-bold">${wager}</div>
+          <span className="text-xs font-bold text-gray-500">WAGER ({wagerPercent}%)</span>
+          <div className="text-2xl font-bold text-neon-red">${currentWagerAmount}</div>
         </div>
       </div>
 
       {/* GAME AREA */}
       <div className="relative mb-8">
-        {/* We key by ID to force a fresh remount on change, clearing error states */}
         <GameCard
             key={currentImage.id}
             src={currentImage.url}
@@ -213,18 +207,25 @@ export default function PlayPage() {
         <div className="space-y-6">
           <div className="comic-box p-4 bg-yellow-100">
              <div className="flex justify-between text-xs font-bold mb-2">
-               <span>RISK: {Math.floor(riskRatio * 100)}%</span>
+               <span>RISK: {wagerPercent}%</span>
                <span>MAX: ${balance}</span>
              </div>
+
+             {/* Slider now controls PERCENTAGE (1-100) */}
              <input
-                type="range" min="1" max={balance} value={wager}
-                onChange={(e) => setWager(Math.floor(Number(e.target.value)))}
-                className="w-full mb-4 accent-black h-2 bg-black rounded-lg appearance-none"
+                type="range"
+                min="1"
+                max="100"
+                step="1"
+                value={wagerPercent}
+                onChange={(e) => setWagerPercent(Number(e.target.value))}
+                className="w-full mb-4 accent-black h-2 bg-black rounded-lg appearance-none cursor-pointer"
              />
+
              <div className="flex gap-2">
-                 <button onClick={() => setWager(Math.max(1, Math.floor(balance * 0.25)))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">25%</button>
-                 <button onClick={() => setWager(Math.max(1, Math.floor(balance * 0.50)))} className="comic-button flex-1 bg-white py-2 text-xs font-bold">50%</button>
-                 <button onClick={() => setWager(balance)} className="comic-button flex-1 bg-red-500 text-white py-2 text-xs font-bold">ALL IN</button>
+                 <button onClick={() => setWagerPercent(25)} className="comic-button flex-1 bg-white py-2 text-xs font-bold hover:bg-gray-50">25%</button>
+                 <button onClick={() => setWagerPercent(50)} className="comic-button flex-1 bg-white py-2 text-xs font-bold hover:bg-gray-50">50%</button>
+                 <button onClick={() => setWagerPercent(100)} className="comic-button flex-1 bg-red-500 text-white py-2 text-xs font-bold hover:bg-red-600">ALL IN</button>
              </div>
           </div>
 
