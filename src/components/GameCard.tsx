@@ -1,11 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type GameCardProps = {
   src: string;
   onSkip: () => void;
-  isActive?: boolean; // FIX: Added prop
+  isActive?: boolean;
 };
 
 export default function GameCard({ src, onSkip, isActive = false }: GameCardProps) {
@@ -13,18 +13,46 @@ export default function GameCard({ src, onSkip, isActive = false }: GameCardProp
   const [displayError, setDisplayError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
-  // Reset state when the image source changes (new round)
+  // 1. Create a Reference to the image element
+  const imgRef = useRef<HTMLImageElement>(null);
+
   useEffect(() => {
+    // Reset state for new image
     setDisplayError(false);
     setLoading(true);
     setRetryCount(0);
+
+    // 2. CRITICAL FIX: Check if image is already cached/loaded
+    if (imgRef.current?.complete) {
+        setLoading(false);
+    }
   }, [src]);
 
+  // 3. SAFETY TIMEOUT: Force stop loading after 5 seconds to prevent eternal hang
+  useEffect(() => {
+    if (!loading) return;
+
+    const timer = setTimeout(() => {
+        if (loading) {
+            // Check one last time
+            if (imgRef.current?.complete) {
+                setLoading(false);
+            } else {
+                console.warn("Image load timed out");
+                handleImageError();
+            }
+        }
+    }, 5000); // 5 seconds max wait
+
+    return () => clearTimeout(timer);
+  }, [loading, src]);
+
   const handleImageError = () => {
-    // Auto-skip logic to keep the game fast
     if (retryCount < 2) {
        console.log("Image failed, auto-skipping...");
        setRetryCount(prev => prev + 1);
+       // Add a cache-buster param to try forcing a reload
+       // (Optional, but helps with some CDNs)
        onSkip();
     } else {
        setLoading(false);
@@ -66,14 +94,12 @@ export default function GameCard({ src, onSkip, isActive = false }: GameCardProp
         </div>
       )}
 
-      {/* FIX: Optimized Image Loading */}
       <img
+        ref={imgRef} // <--- Attach the Ref here
         src={src}
         alt="Subject"
-        decoding="async" // Async decode prevents main thread blocking
-        loading={isActive ? "eager" : "lazy"} // Only eager load active card
-        // fetchPriority is a valid attribute in React 19 / Modern Browsers,
-        // but TypeScript might complain depending on version. Casting or ignoring if needed.
+        decoding="async"
+        loading={isActive ? "eager" : "lazy"}
         // @ts-ignore
         fetchPriority={isActive ? "high" : "auto"}
         className={`w-full h-full object-cover transition-opacity duration-300 ${loading ? 'opacity-0' : 'opacity-100'}`}
